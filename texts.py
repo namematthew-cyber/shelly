@@ -12,23 +12,33 @@ _REPO_LINK = (
     if PROJECT_URL else _REPO_TEXT
 )
 
+AIR = "<p><br/></p>"
+
 WELCOME_HTML = f"""<h1>Привет, {_NAME} 👋</h1>
+{AIR}
 <p>Я <b>Шелли</b> — агентный AI-ассистент администратора сервера.</p>
+{AIR}
 <p>Не болталка: получаю задачу, выполняю команду, читаю результат и думаю дальше. Инструмент ровно один — <code>run_command</code>. Спокойная, когда спокойно; с юмором всегда; в инциденте — собранная и быстрая.</p>
+{AIR}
 <hr/>
+{AIR}
 <h2>С чего начать</h2>
+{AIR}
 <ol>
 <li><b>Узнать, что я умею</b> — кнопка «О проекте» или <code>/about</code>.</li>
 <li><b>Поставить себе</b> — <code>/install</code>.</li>
 <li><b>Получить ключ Gemini</b> — <code>/keys</code>.</li>
 </ol>
+{AIR}
 <p>Можешь просто написать задачу текстом. Опасные команды всегда спросят подтверждения.</p>
+{AIR}
 <tg-button-row>
 <tg-button type="callback_data" data="nav:about">О проекте</tg-button>
 <tg-button type="callback_data" data="nav:install">Установка</tg-button>
 <tg-button type="callback_data" data="nav:keys">Ключ Gemini</tg-button>
 <tg-button type="callback_data" data="nav:help">Справка</tg-button>
 </tg-button-row>
+{AIR}
 <footer>Один инструмент. Много заботы.</footer>"""
 
 ABOUT_HTML = f"""<h1>Что такое Шелли</h1>
@@ -73,7 +83,10 @@ GEMINI_KEY_HTML = f"""<h1>Ключ Gemini за 2 минуты</h1>
 <p>Не публикуй ключ. Если утёк — удали его в Google AI Studio и создай новый. Бесплатной квоты хватает для старта; для постоянной работы включи billing.</p>
 <footer>То же самое: /keys в боте</footer>"""
 
-HELP_HTML = """<h1>Справка</h1>
+HELP_HTML = f"""<h1>Справка</h1>
+{AIR}
+<p>Вот что я умею по командам.</p>
+{AIR}
 <ul>
 <li><code>/start</code> — приветствие и быстрый старт</li>
 <li><code>/about</code> — что такое Шелли</li>
@@ -82,13 +95,17 @@ HELP_HTML = """<h1>Справка</h1>
 <li><code>/clear</code> — забыть историю разговора</li>
 <li><code>/help</code> — эта справка</li>
 </ul>
+{AIR}
 <hr/>
+{AIR}
 <p>Просто напиши задачу текстом — выполню её на сервере. Опасные команды спросят подтверждения кнопками «Да» и «Нет».</p>
+{AIR}
 <tg-button-row>
 <tg-button type="callback_data" data="nav:about">О проекте</tg-button>
 <tg-button type="callback_data" data="nav:install">Установка</tg-button>
 <tg-button type="callback_data" data="nav:keys">Ключ</tg-button>
 </tg-button-row>
+{AIR}
 <footer>Напиши задачу — и я возьмусь</footer>"""
 
 CLEAR_HTML = """<h2>Контекст очищен 🧹</h2>
@@ -104,6 +121,7 @@ def _plain(markup: str) -> str:
     )
     text = re.sub(r"<br\s*/?>", "\n", text)
     text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return html.unescape(text).strip()
 
 

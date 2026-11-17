@@ -38,6 +38,8 @@ def test_texts_are_rich_and_readable():
     )
 
     assert "<h1>" in WELCOME_HTML
+    assert WELCOME_HTML.count("<p><br/></p>") >= 5
+    assert HELP_HTML.count("<p><br/></p>") >= 4
     assert "<tg-button-row>" in WELCOME_HTML
     assert "nav:about" in WELCOME_HTML
     assert "<ol>" in INSTALL_HTML and "<code>" in INSTALL_HTML
