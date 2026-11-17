@@ -86,7 +86,7 @@ def test_texts_are_plain_html_with_inline_buttons():
         assert "архитектур" not in page.lower()
 
     assert "<" not in texts.WELCOME_PLAIN
-    assert "Шелли" in texts.WELCOME_PLAIN
+    assert "Shelly" in texts.WELCOME_PLAIN
 
 
 def test_static_pages_go_one_step_at_a_time():
@@ -115,5 +115,9 @@ def test_static_pages_go_one_step_at_a_time():
     assert "AI-агент для вашего VPS" in texts.WELCOME_HTML
     assert "удалённо через Telegram-бота" in texts.WELCOME_HTML
     assert "прямо в терминале" in texts.WELCOME_HTML
-    assert "Чтобы подключить Shelly к своему серверу, создайте бота" in texts.WELCOME_HTML
+    assert "Вместо десятков команд в голове" in texts.WELCOME_HTML
+    assert "Чтобы подключить Shelly к своему серверу, создайте бота:" in texts.WELCOME_HTML
+    assert "Привет" not in texts.WELCOME_HTML
+    assert "Шаг 1" not in texts.WELCOME_HTML
+    assert "Шелли" not in texts.WELCOME_HTML
 
