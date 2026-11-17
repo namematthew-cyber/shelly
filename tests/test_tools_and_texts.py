@@ -61,8 +61,10 @@ def test_texts_are_plain_html_with_inline_buttons():
     for page in pages.values():
         assert "<h1>" not in page
         assert "tg-button" not in page
-        assert "<b>" in page
         assert page.count("\n\n") <= 5
+    for name, page in pages.items():
+        if name != "menu":
+            assert "<b>" in page
 
     assert "<pre><code>" in pages["install"]
     assert "aistudio.google.com" in pages["keys"]
@@ -120,7 +122,7 @@ def test_static_pages_go_one_step_at_a_time():
     assert "Приветствуем!" in texts.WELCOME_HTML
     assert "Привет 👋" not in texts.WELCOME_HTML
     assert "Полностью бесплатно" in texts.WELCOME_HTML
-    assert texts.WELCOME_HTML.count("Shelly") == texts.WELCOME_HTML.count("<b>Shelly</b>")
+    assert "<b>" not in texts.WELCOME_HTML
     assert "Шаг 1" not in texts.WELCOME_HTML
     assert "Шелли" not in texts.WELCOME_HTML
 

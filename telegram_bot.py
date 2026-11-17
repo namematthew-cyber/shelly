@@ -69,6 +69,9 @@ RICH_LIMIT = 30000
 # Команда должна быть видна не «долю секунды», а хотя бы столько.
 MIN_COMMAND_SEC = 1.5
 
+# Премиум-эмодзи ➕ на кнопке создания бота.
+CREATE_BUTTON_EMOJI_ID = "5258108352008823107"
+
 # Предложенные имена для ботов пользователей: храним, чтобы не повторить имя
 # даже после перезапуска сервиса.
 BOT_NAMES_PATH = Path(__file__).with_name(".bot_names.json")
@@ -247,7 +250,11 @@ def _inline_keyboard(rows, user_id=None):
             elif kind == "url":
                 line.append(InlineKeyboardButton(text=label, url=value))
             elif kind == "create":
-                line.append(InlineKeyboardButton(text=label, url=create_bot_url(user_id)))
+                line.append(InlineKeyboardButton(
+                    text=label,
+                    url=create_bot_url(user_id),
+                    icon_custom_emoji_id=CREATE_BUTTON_EMOJI_ID,
+                ))
             elif kind == "prompt":
                 line.append(InlineKeyboardButton(
                     text=label, switch_inline_query_current_chat=value,

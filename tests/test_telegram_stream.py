@@ -190,7 +190,9 @@ def test_create_button_points_to_bot_management_link(monkeypatch, tmp_path):
     keyboard = tg._inline_keyboard(texts.WELCOME_BUTTONS, 42)
     assert len(keyboard.inline_keyboard) == 1
     assert len(keyboard.inline_keyboard[0]) == 1
-    assert keyboard.inline_keyboard[0][0].url == url
+    button = keyboard.inline_keyboard[0][0]
+    assert button.url == url
+    assert button.icon_custom_emoji_id == "5258108352008823107"
 
     # Имя одного и того же пользователя стабильно, разные пользователи не коллидируют.
     assert tg.create_bot_url(42) == url
