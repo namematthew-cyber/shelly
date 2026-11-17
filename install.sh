@@ -7,36 +7,101 @@ PARENT="$(dirname "$DIR")"
 VENV="$DIR/.venv"
 ENV_FILE="$DIR/.env"
 
-echo "Шелли — установка"
-echo "Каталог: $DIR"
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    AMBER=$'\033[1;38;5;178m'
+    DIM=$'\033[2m'
+    GREEN=$'\033[32m'
+    RED=$'\033[31m'
+    RESET=$'\033[0m'
+    ANIMATE=1
+else
+    AMBER='' DIM='' GREEN='' RED='' RESET=''
+    ANIMATE=0
+fi
+
+FRAMES=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+
+section() { printf '\n  %s──  %s  ──%s\n\n' "$DIM" "$1" "$RESET"; }
+step()    { printf '  %s◆%s  %s\n' "$AMBER" "$RESET" "$1"; }
+ok()      { printf '  %s✓%s  %s\n' "$GREEN" "$RESET" "$1"; }
+fail()    { printf '  %s✗%s  %s\n' "$RED" "$RESET" "$1"; }
+hint()    { printf '  %s%s%s\n' "$DIM" "$1" "$RESET"; }
+
+run_step() {
+    local label="$1"; shift
+    local out pid rc=0 i=0 frame
+    out="$(mktemp)"
+    if [ "$ANIMATE" = 1 ]; then
+        "$@" >"$out" 2>&1 &
+        pid=$!
+        while kill -0 "$pid" 2>/dev/null; do
+            frame="${FRAMES[$((i % ${#FRAMES[@]}))]}"
+            printf '\r  %s%s%s  %s' "$AMBER" "$frame" "$RESET" "$label"
+            sleep 0.08
+            i=$((i + 1))
+        done
+        if wait "$pid"; then rc=0; else rc=$?; fi
+        printf '\r'
+    else
+        if "$@" >"$out" 2>&1; then rc=0; else rc=$?; fi
+    fi
+    if [ "$rc" -eq 0 ]; then
+        ok "$label"
+    else
+        fail "$label"
+        cat "$out" >&2
+    fi
+    rm -f "$out"
+    return "$rc"
+}
+
+valid_utf8() {
+    printf '%s' "$1" | "$PYTHON" -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' 2>/dev/null
+}
+
+printf '\n'
+printf '  %sS H E L L Y%s  %s· установка%s\n' "$AMBER" "$RESET" "$DIM" "$RESET"
+printf '  %s────────────────────────────────%s\n' "$DIM" "$RESET"
+printf '\n'
+printf '  Каталог  %s\n' "$DIR"
+printf '\n'
 
 PYTHON="${PYTHON:-python3}"
 if ! command -v "$PYTHON" >/dev/null 2>&1; then
-    echo "Не найден $PYTHON" >&2
+    fail "Не найден $PYTHON"
     exit 1
 fi
 
+section "Окружение"
 if [ ! -d "$VENV" ]; then
-    echo "Создаю виртуальное окружение..."
-    "$PYTHON" -m venv "$VENV"
+    run_step "Создаю виртуальное окружение" "$PYTHON" -m venv "$VENV"
+else
+    ok "Виртуальное окружение уже есть"
 fi
-"$VENV/bin/pip" install -q -e "$DIR"
+run_step "Устанавливаю пакет" "$VENV/bin/pip" install -q -e "$DIR"
 
+section "Настройки"
+overwrite=''
 if [ -f "$ENV_FILE" ]; then
-    read -rp "Файл .env уже есть. Перезаписать? [y/N]: " overwrite
+    read -rp "  ${AMBER}→${RESET} Файл .env уже есть. Перезаписать? [y/N]: " overwrite
     case "$overwrite" in
         y|Y|yes|да) ;;
-        *) echo "Оставляю существующий .env" ;;
+        *) ok "Оставляю существующий .env"; overwrite='' ;;
     esac
 fi
 
 if [ ! -f "$ENV_FILE" ] || [[ "${overwrite:-}" == "y" || "${overwrite:-}" == "Y" || "${overwrite:-}" == "да" ]]; then
-    read -rsp "Ключ(и) Gemini через запятую: " keys; echo
-    read -rsp "Токен Telegram-бота: " token; echo
-    read -rp "Твой Telegram ID: " admin
-    read -rp "Как тебя зовут: " name
+    read -rsp "  ${AMBER}→${RESET} Ключ(и) Gemini через запятой: " keys; echo
+    read -rsp "  ${AMBER}→${RESET} Токен Telegram-бота: " token; echo
+    read -rp  "  ${AMBER}→${RESET} Твой Telegram ID: " admin
+    read -rp  "  ${AMBER}→${RESET} Как тебя зовут: " name
+    read -rp  "  ${AMBER}→${RESET} Ссылка на репозиторий проекта [необязательно]: " project_url
+
     name="${name:-хозяин}"
-    read -rp "Ссылка на репозиторий проекта [необязательно]: " project_url
+    if ! valid_utf8 "$name"; then
+        hint "Имя записалось с битыми символами — ставлю Shelly"
+        name="Shelly"
+    fi
 
     umask 077
     cat > "$ENV_FILE" <<EOF
@@ -48,12 +113,13 @@ SHELLY_WORKDIR=$PARENT
 SHELLY_PROJECT_URL=$project_url
 SHELLY_MASK_SECRETS=1
 EOF
-    echo "Записал $ENV_FILE (права 600)"
+    ok "Записал $ENV_FILE (права 600)"
 fi
 
 if [[ "${1:-}" == "--service" ]]; then
+    section "Сервис"
     UNIT=/etc/systemd/system/shelly-tg.service
-    echo "Устанавливаю systemd-сервис $UNIT"
+    step "Устанавливаю systemd-сервис"
     cat > /tmp/shelly-tg.service.tmp <<EOF
 [Unit]
 Description=Shelly Telegram assistant
@@ -87,13 +153,17 @@ EOF
     fi
     systemctl daemon-reload
     systemctl enable --now shelly-tg.service
-    echo "Готово: systemctl status shelly-tg"
+    ok "Сервис shelly-tg запущен"
+    hint "Статус: systemctl status shelly-tg"
 fi
 
-echo "Проверяю установку..."
+section "Проверка"
 "$VENV/bin/shelly-doctor" || true
 
-echo "Установка завершена."
-echo "  Терминал:  $VENV/bin/shelly"
-echo "  Telegram:  $VENV/bin/shelly-tg"
-echo "  Проверка:  $VENV/bin/shelly-doctor"
+printf '\n'
+printf '  %sГотово%s\n' "$AMBER" "$RESET"
+printf '  %s────────────────────────────────%s\n' "$DIM" "$RESET"
+printf '  терминал   %s\n' "$VENV/bin/shelly"
+printf '  Telegram   %s\n' "$VENV/bin/shelly-tg"
+printf '  проверка   %s\n' "$VENV/bin/shelly-doctor"
+printf '\n'
