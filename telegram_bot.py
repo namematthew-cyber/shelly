@@ -22,6 +22,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     BotCommand,
     CallbackQuery,
+    CopyTextButton,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputRichMessage,
@@ -34,12 +35,7 @@ from .config import (
     THINK_EMOJI_CHAR, THINK_EMOJI_ID,
 )
 from .masking import mask
-from .texts import (
-    ABOUT_HTML, ABOUT_PLAIN, CLEAR_HTML, CLEAR_PLAIN,
-    EXAMPLES_HTML, EXAMPLES_PLAIN, GEMINI_KEY_HTML, GEMINI_KEY_PLAIN,
-    HELP_HTML, HELP_PLAIN, INSTALL_HTML, INSTALL_PLAIN,
-    SECURITY_HTML, SECURITY_PLAIN, WELCOME_HTML, WELCOME_PLAIN,
-)
+from . import texts
 
 logger = logging.getLogger("shelly.tg")
 
@@ -167,27 +163,61 @@ async def send_rich(chat_id, text):
             await bot.send_message(chat_id=str(chat_id), text=html.escape(mask(part)))
 
 
-async def send_rich_html(chat_id, markup, plain):
-    """Статичные тексты Шелли: сначала rich, при неудаче — простой текст."""
-    try:
-        return await bot.send_rich_message(
-            chat_id=chat_id,
-            rich_message=InputRichMessage(html=markup),
-        )
-    except Exception as e:
-        logger.exception("Rich-сообщение недоступно, отправляю простой текст: %s", e)
-        return await bot.send_message(chat_id=str(chat_id), text=plain)
+def _inline_keyboard(rows):
+    buttons = []
+    for row in rows:
+        line = []
+        for kind, value, label in row:
+            if kind == "nav":
+                line.append(InlineKeyboardButton(text=label, callback_data=f"nav:{value}"))
+            elif kind == "copy":
+                line.append(InlineKeyboardButton(
+                    text=label, copy_text=CopyTextButton(text=value),
+                ))
+            elif kind == "url":
+                line.append(InlineKeyboardButton(text=label, url=value))
+            elif kind == "prompt":
+                line.append(InlineKeyboardButton(
+                    text=label, switch_inline_query_current_chat=value,
+                ))
+            else:
+                raise ValueError(f"Неизвестный тип кнопки: {kind}")
+        buttons.append(line)
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 STATIC_PAGES = {
-    "menu": (WELCOME_HTML, WELCOME_PLAIN),
-    "about": (ABOUT_HTML, ABOUT_PLAIN),
-    "install": (INSTALL_HTML, INSTALL_PLAIN),
-    "keys": (GEMINI_KEY_HTML, GEMINI_KEY_PLAIN),
-    "help": (HELP_HTML, HELP_PLAIN),
-    "examples": (EXAMPLES_HTML, EXAMPLES_PLAIN),
-    "security": (SECURITY_HTML, SECURITY_PLAIN),
+    "menu": (texts.WELCOME_HTML, texts.WELCOME_PLAIN, texts.WELCOME_BUTTONS),
+    "about": (texts.ABOUT_HTML, texts.ABOUT_PLAIN, texts.ABOUT_BUTTONS),
+    "install": (texts.INSTALL_HTML, texts.INSTALL_PLAIN, texts.INSTALL_BUTTONS),
+    "keys": (texts.GEMINI_KEY_HTML, texts.GEMINI_KEY_PLAIN, texts.GEMINI_KEY_BUTTONS),
+    "help": (texts.HELP_HTML, texts.HELP_PLAIN, texts.HELP_BUTTONS),
+    "examples": (texts.EXAMPLES_HTML, texts.EXAMPLES_PLAIN, texts.EXAMPLES_BUTTONS),
+    "security": (texts.SECURITY_HTML, texts.SECURITY_PLAIN, texts.SECURITY_BUTTONS),
+    "clear": (texts.CLEAR_HTML, texts.CLEAR_PLAIN, texts.CLEAR_BUTTONS),
 }
+
+
+async def send_page(chat_id, page):
+    """Статические страницы — обычные сообщения с HTML и inline-кнопками."""
+    markup, plain, rows = STATIC_PAGES[page]
+    keyboard = _inline_keyboard(rows)
+    try:
+        return await bot.send_message(
+            chat_id=chat_id,
+            text=markup,
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard,
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.exception("HTML-сообщение недоступно, шлю простой текст: %s", e)
+        return await bot.send_message(
+            chat_id=chat_id,
+            text=plain,
+            reply_markup=keyboard,
+            disable_web_page_preview=True,
+        )
 
 
 class StreamView:
@@ -511,9 +541,8 @@ async def on_nav(callback: CallbackQuery):
         await callback.answer("Такой страницы нет.", show_alert=True)
         return
 
-    markup, plain = entry
     await callback.answer()
-    await send_rich_html(callback.message.chat.id, markup, plain)
+    await send_page(callback.message.chat.id, page)
 
     # Навигация не должна засорять чат: старая страница уезжает.
     if callback.message:
@@ -531,49 +560,49 @@ async def cmd_start(message: Message):
     if not allowed(message.from_user.id):
         return
     # Только приветствие: агент запускается по первой реальной задаче.
-    await send_rich_html(message.chat.id, WELCOME_HTML, WELCOME_PLAIN)
+    await send_page(message.chat.id, "menu")
 
 
 @dp.message(Command("menu"))
 async def cmd_menu(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich_html(message.chat.id, WELCOME_HTML, WELCOME_PLAIN)
+    await send_page(message.chat.id, "menu")
 
 
 @dp.message(Command("about"))
 async def cmd_about(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich_html(message.chat.id, ABOUT_HTML, ABOUT_PLAIN)
+    await send_page(message.chat.id, "about")
 
 
 @dp.message(Command("install"))
 async def cmd_install(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich_html(message.chat.id, INSTALL_HTML, INSTALL_PLAIN)
+    await send_page(message.chat.id, "install")
 
 
 @dp.message(Command("keys"))
 async def cmd_keys(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich_html(message.chat.id, GEMINI_KEY_HTML, GEMINI_KEY_PLAIN)
+    await send_page(message.chat.id, "keys")
 
 
 @dp.message(Command("examples"))
 async def cmd_examples(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich_html(message.chat.id, EXAMPLES_HTML, EXAMPLES_PLAIN)
+    await send_page(message.chat.id, "examples")
 
 
 @dp.message(Command("security"))
 async def cmd_security(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich_html(message.chat.id, SECURITY_HTML, SECURITY_PLAIN)
+    await send_page(message.chat.id, "security")
 
 
 @dp.message(Command("clear"))
@@ -583,14 +612,14 @@ async def cmd_clear(message: Message):
     global agent
     async with _busy:
         agent = Agent(confirm=tg_confirm)
-    await send_rich_html(message.chat.id, CLEAR_HTML, CLEAR_PLAIN)
+    await send_page(message.chat.id, "clear")
 
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich_html(message.chat.id, HELP_HTML, HELP_PLAIN)
+    await send_page(message.chat.id, "help")
 
 
 @dp.message(F.text)

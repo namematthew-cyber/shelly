@@ -32,35 +32,54 @@ def test_texts_have_commands_and_install_steps():
     assert "aistudio.google.com" in GEMINI_KEY
 
 
-def test_texts_are_compact_and_lead_to_install():
-    from shelly.texts import (
-        ABOUT_HTML, CLEAR_HTML, EXAMPLES_HTML, GEMINI_KEY_HTML, HELP_HTML,
-        INSTALL_HTML, SECURITY_HTML, WELCOME_HTML, WELCOME_PLAIN,
-    )
+def test_texts_are_plain_html_with_inline_buttons():
+    from shelly import texts
 
-    pages = (
-        WELCOME_HTML, ABOUT_HTML, INSTALL_HTML, GEMINI_KEY_HTML,
-        HELP_HTML, EXAMPLES_HTML, SECURITY_HTML, CLEAR_HTML,
-    )
+    pages = {
+        "menu": texts.WELCOME_HTML,
+        "about": texts.ABOUT_HTML,
+        "install": texts.INSTALL_HTML,
+        "keys": texts.GEMINI_KEY_HTML,
+        "help": texts.HELP_HTML,
+        "examples": texts.EXAMPLES_HTML,
+        "security": texts.SECURITY_HTML,
+        "clear": texts.CLEAR_HTML,
+    }
+    buttons = {
+        "menu": texts.WELCOME_BUTTONS,
+        "about": texts.ABOUT_BUTTONS,
+        "install": texts.INSTALL_BUTTONS,
+        "keys": texts.GEMINI_KEY_BUTTONS,
+        "help": texts.HELP_BUTTONS,
+        "examples": texts.EXAMPLES_BUTTONS,
+        "security": texts.SECURITY_BUTTONS,
+        "clear": texts.CLEAR_BUTTONS,
+    }
 
-    assert "<h1>" in WELCOME_HTML
-    assert 1 <= WELCOME_HTML.count("<p><br/></p>") <= 4
-    assert 1 <= HELP_HTML.count("<p><br/></p>") <= 3
-    assert "<tg-button-row>" in WELCOME_HTML
-    assert "nav:install" in WELCOME_HTML
-    assert "<pre><code>" in INSTALL_HTML
-    assert 'type="copy_text"' in INSTALL_HTML
-    assert 'type="url"' in GEMINI_KEY_HTML
-    assert 'type="switch_inline_query_current_chat"' in EXAMPLES_HTML
+    for page in pages.values():
+        assert "<h1>" not in page
+        assert "tg-button" not in page
+        assert "<b>" in page
+        assert page.count("\n\n") <= 5
 
-    for page in (WELCOME_HTML, ABOUT_HTML, HELP_HTML, GEMINI_KEY_HTML, SECURITY_HTML):
-        assert "nav:install" in page
+    assert "<pre><code>" in pages["install"]
+    assert "aistudio.google.com" in pages["keys"]
 
-    for page in pages:
+    for name in ("menu", "about", "help", "keys", "security"):
+        assert any(
+            spec[0] == "nav" and spec[1] == "install"
+            for row in buttons[name] for spec in row
+        )
+
+    assert any(spec[0] == "copy" for row in buttons["install"] for spec in row)
+    assert any(spec[0] == "url" for row in buttons["keys"] for spec in row)
+    assert any(spec[0] == "prompt" for row in buttons["examples"] for spec in row)
+    assert any(spec[:2] == ("nav", "menu") for row in buttons["about"] for spec in row)
+
+    for page in pages.values():
         assert "ID" not in page
         assert "характер" not in page.lower()
         assert "архитектур" not in page.lower()
 
-    assert "<h1>" not in WELCOME_PLAIN
-    assert "Шелли" in WELCOME_PLAIN
-    assert "Скопировать" not in WELCOME_PLAIN
+    assert "<" not in texts.WELCOME_PLAIN
+    assert "Шелли" in texts.WELCOME_PLAIN

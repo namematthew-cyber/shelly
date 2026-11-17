@@ -1,4 +1,4 @@
-"""Короткие rich-страницы Telegram-бота: меньше слов, больше действия."""
+"""Обычные HTML-сообщения и inline-кнопки для статических страниц бота."""
 
 import html
 import re
@@ -8,141 +8,141 @@ from .config import PROJECT_URL, USER_NAME
 _NAME = html.escape(USER_NAME)
 _REPO_RAW = PROJECT_URL or "<ссылка на репозиторий>"
 _REPO_TEXT = html.escape(_REPO_RAW)
-
-AIR = "<p><br/></p>"
+_KEYS_URL = "https://aistudio.google.com/app/apikey"
 
 
 def _nav(page, label):
-    return f'<tg-button type="callback_data" data="nav:{page}">{html.escape(label)}</tg-button>'
+    return ("nav", page, label)
 
 
-def _copy(text, label="Копировать"):
-    return (
-        f'<tg-button type="copy_text" text="{html.escape(text, quote=True)}">'
-        f"{html.escape(label)}</tg-button>"
-    )
+def _copy(text, label):
+    return ("copy", text, label)
 
 
 def _url(url, label):
-    return (
-        f'<tg-button type="url" url="{html.escape(url, quote=True)}">'
-        f"{html.escape(label)}</tg-button>"
-    )
+    return ("url", url, label)
 
 
 def _prompt(query, label):
-    return (
-        f'<tg-button type="switch_inline_query_current_chat" query="{html.escape(query, quote=True)}">'
-        f"{html.escape(label)}</tg-button>"
-    )
-
-
-def _row(*buttons):
-    return "<tg-button-row>" + "".join(buttons) + "</tg-button-row>"
+    return ("prompt", query, label)
 
 
 BACK = _nav("menu", "⬅️ Меню")
 CLOSE = _nav("close", "✕ Закрыть")
-BOTTOM = _row(BACK, CLOSE)
+BOTTOM = (BACK, CLOSE)
+MAIN = (
+    _nav("install", "Установить"),
+    _nav("keys", "Ключ Gemini"),
+    _nav("examples", "Примеры"),
+)
 
-WELCOME_HTML = f"""<h1>Привет, {_NAME} 👋</h1>
-{AIR}
-<p><b>Шелли</b> — AI-агент для вашего VPS. Поставьте её за пару команд и управляйте сервером из Telegram или терминала.</p>
-<p>Напишите задачу — она выполнит команды и вернёт результат.</p>
-{AIR}
-{_row(_nav('install', 'Установить'), _nav('keys', 'Ключ Gemini'), _nav('examples', 'Примеры'))}
-{AIR}
-{_row(_nav('about', 'О Шелли'), _nav('security', 'Безопасность'), _nav('help', 'Команды'), CLOSE)}"""
+WELCOME_HTML = f"""<b>Привет, {_NAME} 👋</b>
 
-ABOUT_HTML = f"""<h1>О Шелли</h1>
-{AIR}
-<p><b>Шелли</b> — AI-агент для вашего VPS. Работает в Telegram и по SSH: получает задачу, выполняет команды и возвращает готовый результат.</p>
-<p>Установка занимает пару команд.</p>
-{AIR}
-{_row(_nav('install', 'Установить'), _nav('keys', 'Ключ Gemini'))}
-{AIR}
-{BOTTOM}"""
+<b>Шелли</b> — AI-агент для вашего VPS. Поставьте её за пару команд и управляйте сервером из Telegram или терминала.
 
-INSTALL_HTML = f"""<h1>Установка</h1>
-{AIR}
-<p>Три команды — и Шелли готова к работе.</p>
-<h2>1. Скачайте</h2>
+Напишите задачу — она выполнит команды и вернёт результат."""
+WELCOME_BUTTONS = (
+    MAIN,
+    (_nav("about", "О Шелли"), _nav("security", "Безопасность"), _nav("help", "Команды"), CLOSE),
+)
+
+ABOUT_HTML = """<b>О Шелли</b>
+
+<b>Шелли</b> — AI-агент для вашего VPS. Работает в Telegram и по SSH: получает задачу, выполняет команды и возвращает готовый результат.
+
+Установка занимает пару команд."""
+ABOUT_BUTTONS = (
+    (_nav("install", "Установить"), _nav("keys", "Ключ Gemini")),
+    BOTTOM,
+)
+
+INSTALL_HTML = f"""<b>Установка</b>
+
+Три команды — и Шелли готова к работе.
+
+<b>1. Скачайте</b>
 <pre><code>git clone {_REPO_TEXT} shelly
 cd shelly</code></pre>
-<p>{_copy(f'git clone {_REPO_RAW} shelly && cd shelly')}</p>
-<h2>2. Установите</h2>
+
+<b>2. Установите</b>
 <pre><code>sudo ./install.sh --service</code></pre>
-<p>{_copy('sudo ./install.sh --service')}</p>
-<h2>3. Проверьте</h2>
-<pre><code>.venv/bin/shelly-doctor</code></pre>
-<p>{_copy('.venv/bin/shelly-doctor')}</p>
-{AIR}
-{_row(_nav('keys', 'Нужен ключ'), _nav('menu', 'Меню'), CLOSE)}"""
 
-GEMINI_KEY_HTML = f"""<h1>Ключ Gemini</h1>
-{AIR}
-<p>Создайте ключ в Google AI Studio и добавьте его в <code>.env</code>.</p>
-{AIR}
-<p>{_url('https://aistudio.google.com/app/apikey', 'Открыть AI Studio')} {_copy('GEMINI_API_KEYS=')}</p>
+<b>3. Проверьте</b>
+<pre><code>.venv/bin/shelly-doctor</code></pre>"""
+INSTALL_BUTTONS = (
+    (
+        _copy(f"git clone {_REPO_RAW} shelly && cd shelly", "1. Копировать"),
+        _copy("sudo ./install.sh --service", "2. Копировать"),
+        _copy(".venv/bin/shelly-doctor", "3. Копировать"),
+    ),
+    (_nav("keys", "Нужен ключ"),) + BOTTOM,
+)
+
+GEMINI_KEY_HTML = f"""<b>Ключ Gemini</b>
+
+Создайте ключ в <a href="{_KEYS_URL}">Google AI Studio</a> и добавьте его в <code>.env</code>.
+
 <pre><code>GEMINI_API_KEYS=твой_ключ</code></pre>
-<p>Несколько ключей можно через запятую. Ключ не публикуйте.</p>
-{AIR}
-{_row(_nav('install', 'К установке'), _nav('menu', 'Меню'), CLOSE)}"""
 
-HELP_HTML = f"""<h1>Команды</h1>
-{AIR}
-<ul>
-<li><code>/start</code> — приветствие и меню</li>
-<li><code>/menu</code> — открыть меню</li>
-<li><code>/about</code> — о Шелли</li>
-<li><code>/install</code> — установка</li>
-<li><code>/keys</code> — ключ Gemini</li>
-<li><code>/examples</code> — примеры задач</li>
-<li><code>/security</code> — безопасность</li>
-<li><code>/clear</code> — очистить контекст</li>
-<li><code>/help</code> — эта справка</li>
-</ul>
-{AIR}
-{_row(_nav('install', 'Установить'), _nav('keys', 'Ключ'), _nav('examples', 'Примеры'))}
-{AIR}
-{BOTTOM}"""
+Несколько ключей можно через запятую. Ключ не публикуйте."""
+GEMINI_KEY_BUTTONS = (
+    (_url(_KEYS_URL, "Открыть AI Studio"), _copy("GEMINI_API_KEYS=", "Копировать")),
+    (_nav("install", "К установке"),) + BOTTOM,
+)
 
-EXAMPLES_HTML = f"""<h1>Примеры задач</h1>
-{AIR}
-<p>Нажмите кнопку — текст подставится в поле ввода.</p>
-{AIR}
-{_row(_prompt('Проверь свободное место на дисках и покажи самое главное', 'Диски'), _prompt('Какие systemd-сервисы упали или перезапускались?', 'Сервисы'))}
-{_row(_prompt('Покажи последние ошибки в journalctl за час', 'Логи'), _prompt('Кто сейчас залогинен на сервере?', 'Онлайн'))}
-{_row(_prompt('Проверь обновления безопасности, но ничего не устанавливай', 'Обновления'), _prompt('Коротко расскажи, как дела на сервере', 'Сводка'))}
-{AIR}
-{BOTTOM}"""
+HELP_HTML = """<b>Команды</b>
 
-SECURITY_HTML = f"""<h1>Безопасность</h1>
-{AIR}
-<ul>
-<li>Опасные команды требуют подтверждения.</li>
-<li>Ключи и токены маскируются в выводе и логах.</li>
-<li><code>.env</code> создаётся с правами <code>600</code>.</li>
-</ul>
-{AIR}
-{_row(_nav('install', 'Установить'), _nav('menu', 'Меню'), CLOSE)}"""
+<code>/start</code> — приветствие и меню
+<code>/menu</code> — открыть меню
+<code>/about</code> — о Шелли
+<code>/install</code> — установка
+<code>/keys</code> — ключ Gemini
+<code>/examples</code> — примеры задач
+<code>/security</code> — безопасность
+<code>/clear</code> — очистить контекст
+<code>/help</code> — эта справка"""
+HELP_BUTTONS = (
+    MAIN,
+    BOTTOM,
+)
 
-CLEAR_HTML = f"""<h2>Контекст очищен 🧹</h2>
-<p>Можно писать новую задачу.</p>
-{AIR}
-{BOTTOM}"""
+EXAMPLES_HTML = """<b>Примеры задач</b>
+
+Нажмите кнопку — текст подставится в поле ввода."""
+EXAMPLES_BUTTONS = (
+    (
+        _prompt("Проверь свободное место на дисках и покажи самое главное", "Диски"),
+        _prompt("Какие systemd-сервисы упали или перезапускались?", "Сервисы"),
+    ),
+    (
+        _prompt("Покажи последние ошибки в journalctl за час", "Логи"),
+        _prompt("Кто сейчас залогинен на сервере?", "Онлайн"),
+    ),
+    (
+        _prompt("Проверь обновления безопасности, но ничего не устанавливай", "Обновления"),
+        _prompt("Коротко расскажи, как дела на сервере", "Сводка"),
+    ),
+    BOTTOM,
+)
+
+SECURITY_HTML = """<b>Безопасность</b>
+
+• Опасные команды требуют подтверждения.
+• Ключи и токены маскируются в выводе и логах.
+• <code>.env</code> создаётся с правами <code>600</code>."""
+SECURITY_BUTTONS = (
+    (_nav("install", "Установить"),) + BOTTOM,
+)
+
+CLEAR_HTML = """<b>Контекст очищен 🧹</b>
+
+Можно писать новую задачу."""
+CLEAR_BUTTONS = (BOTTOM,)
 
 
 def _plain(markup: str) -> str:
-    """Plain-версия для клиентов без rich-сообщений."""
-    text = re.sub(r"<tg-button\b[^>]*>.*?</tg-button>", "", markup, flags=re.S)
-    text = re.sub(
-        r"</?(?:p|h[1-6]|li|ol|ul|hr|footer|blockquote|tg-button-row)[^>]*>",
-        "\n", text,
-    )
-    text = re.sub(r"<br\s*/?>", "\n", text)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
+    """Текст без разметки — запасной вариант, если HTML не прошёл."""
+    text = re.sub(r"<[^>]+>", "", markup)
     return html.unescape(text).strip()
 
 

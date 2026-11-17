@@ -19,12 +19,17 @@ class FakeBot:
         self.edits = []
         self.deleted = []
         self.rich = []
+        self.messages = []
 
     async def send_rich_message_draft(self, **kwargs):
         self.drafts.append(kwargs)
 
     async def send_rich_message(self, **kwargs):
         self.rich.append(kwargs)
+
+    async def send_message(self, **kwargs):
+        self.messages.append(kwargs)
+        return SimpleNamespace(message_id=99, chat=kwargs["chat_id"])
 
     async def edit_message_text(self, **kwargs):
         self.edits.append(kwargs)
@@ -99,20 +104,33 @@ def test_dynamic_messages_have_no_signature():
 
 
 def test_static_pages_cover_full_menu():
-    for page in ("menu", "about", "install", "keys", "help", "examples", "security"):
+    for page in ("menu", "about", "install", "keys", "help", "examples", "security", "clear"):
         assert page in tg.STATIC_PAGES
+
+
+def test_static_pages_send_plain_html_with_keyboard(monkeypatch):
+    fake = FakeBot()
+    monkeypatch.setattr(tg, "bot", fake)
+
+    asyncio.run(tg.send_page(1, "install"))
+
+    sent = fake.messages[-1]
+    assert sent["parse_mode"] == tg.ParseMode.HTML
+    assert "<b>" in sent["text"] and "tg-button" not in sent["text"]
+    assert sent["reply_markup"].inline_keyboard
+    assert fake.rich == []
 
 
 def test_start_sends_only_welcome(monkeypatch):
     calls = []
 
-    async def fake_send(chat_id, markup, plain):
-        calls.append("welcome")
+    async def fake_send(chat_id, page):
+        calls.append(page)
 
     async def fake_ask(message, prompt):
         calls.append("agent")
 
-    monkeypatch.setattr(tg, "send_rich_html", fake_send)
+    monkeypatch.setattr(tg, "send_page", fake_send)
     monkeypatch.setattr(tg, "ask", fake_ask)
 
     message = SimpleNamespace(
@@ -121,4 +139,4 @@ def test_start_sends_only_welcome(monkeypatch):
     )
     asyncio.run(tg.cmd_start(message))
 
-    assert calls == ["welcome"]
+    assert calls == ["menu"]
