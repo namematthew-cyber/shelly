@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Telegram-адаптер Шелли: тонкий слой над общим Agent.
 
-Доступ только у одного пользователя (SHELLY_ADMIN_ID).
+Доступ настраивается через SHELLY_ADMIN_ID.
 Опасные команды подтверждаются inline-кнопками Да/Нет.
 Ответы стримятся через sendRichMessageDraft и закрепляются sendRichMessage.
 """
@@ -618,7 +618,7 @@ async def main():
     ])
 
     me = await bot.get_me()
-    logger.info("Шелли в Telegram: @%s, доступ только для %s, стриминг через rich messages", me.username, ADMIN_ID)
+    logger.info("Шелли в Telegram: @%s, стриминг через rich messages", me.username)
 
     try:
         await dp.start_polling(bot)
