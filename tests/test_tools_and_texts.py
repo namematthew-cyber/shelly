@@ -114,9 +114,9 @@ def test_static_pages_go_one_step_at_a_time():
         spec[:2] == ("nav", "close")
         for row in texts.WELCOME_BUTTONS for spec in row
     )
-    assert "AI-агент для вашего VPS" in texts.WELCOME_HTML
-    assert "Пишите ей задачи из Telegram" in texts.WELCOME_HTML
-    assert "запускайте прямо в терминале" in texts.WELCOME_HTML
+    assert "ИИ-агент для вашего VPS" in texts.WELCOME_HTML
+    assert "Управляйте своим сервером из Telegram" in texts.WELCOME_HTML
+    assert "воспользуйтесь помощью Shelly в терминале" in texts.WELCOME_HTML
     assert "Вместо десятков команд в голове" in texts.WELCOME_HTML
     assert "Чтобы подключить Shelly к своему серверу, создайте бота:" in texts.WELCOME_PLAIN
     assert "Приветствуем!" in texts.WELCOME_HTML
