@@ -178,7 +178,7 @@ def test_create_button_points_to_bot_management_link(monkeypatch, tmp_path):
     url = tg.create_bot_url(42)
     name = url.split("/")[-1].split("?")[0]
     assert url.startswith("https://t.me/newbot/shelly_ai/")
-    assert url.endswith("?name=Shelly+AI")
+    assert url.endswith("?name=Shelly")
     assert re.fullmatch(r"shelly_ai_\d{16}_bot", name)
     assert len(name) <= 32
 

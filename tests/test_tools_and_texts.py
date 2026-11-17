@@ -112,6 +112,7 @@ def test_static_pages_go_one_step_at_a_time():
         spec[:2] == ("nav", "close")
         for row in texts.WELCOME_BUTTONS for spec in row
     )
-    assert "команды можно выполнять из Telegram" in texts.WELCOME_HTML
-    assert "терминале по SSH" in texts.WELCOME_HTML
+    assert "из Telegram можно выполнять любые команды" in texts.WELCOME_HTML
+    assert "задеплоить код" in texts.WELCOME_HTML
+    assert "прямо в терминале" in texts.WELCOME_HTML
 

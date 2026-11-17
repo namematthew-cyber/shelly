@@ -229,7 +229,7 @@ def create_bot_url(user_id=None):
     if not _manage_bots or not _bot_username:
         return "https://t.me/BotFather"
     name = suggested_bot_username(user_id)
-    return f"https://t.me/newbot/{_bot_username}/{name}?name=Shelly+AI"
+    return f"https://t.me/newbot/{_bot_username}/{name}?name=Shelly"
 
 
 def _inline_keyboard(rows, user_id=None):
