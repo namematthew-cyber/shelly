@@ -57,6 +57,13 @@ def test_long_request_uses_editable_keepalive(monkeypatch):
     assert fake.rich == [(1, "финальный ответ")]
 
 
+def test_dynamic_messages_have_no_signature():
+    rendered = tg.rich_html("привет\nмир")
+    assert "<p>привет<br/>мир</p>" in rendered
+    assert "footer" not in rendered.lower()
+    assert "Шелли" not in rendered
+
+
 def test_start_sends_only_welcome(monkeypatch):
     calls = []
 

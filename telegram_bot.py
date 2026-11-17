@@ -68,12 +68,12 @@ def allowed(user_id):
 
 
 def rich_html(text):
-    """Безопасный dynamic-текст с лёгкой структурой и подписью Шелли."""
+    """Безопасный dynamic-текст без лишней подписи и самодельных украшений."""
     safe = html.escape(mask(text or ""))
-    limit = RICH_LIMIT - 100  # запас на <p>, <footer> и экранирование
+    limit = RICH_LIMIT - 50  # запас на <p> и экранирование
     if len(safe) > limit:
         safe = safe[:limit] + "…"
-    return f"<p>{safe.replace('\n', '<br/>')}</p><footer>Шелли</footer>"
+    return f"<p>{safe.replace('\n', '<br/>')}</p>"
 
 
 def chunks(text, size=RICH_LIMIT):

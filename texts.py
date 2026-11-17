@@ -29,7 +29,7 @@ WELCOME_HTML = f"""<h1>Привет, {_NAME} 👋</h1>
 <tg-button type="callback_data" data="nav:keys">Ключ Gemini</tg-button>
 <tg-button type="callback_data" data="nav:help">Справка</tg-button>
 </tg-button-row>
-<footer>Шелли — один инструмент, много заботы</footer>"""
+<footer>Один инструмент. Много заботы.</footer>"""
 
 ABOUT_HTML = f"""<h1>Что такое Шелли</h1>
 <p><b>Шелли</b> — агентный AI-ассистент администратора сервера. Работает в терминале по SSH и в Telegram, поверх одного и того же ядра.</p>
@@ -89,7 +89,7 @@ HELP_HTML = """<h1>Справка</h1>
 <tg-button type="callback_data" data="nav:install">Установка</tg-button>
 <tg-button type="callback_data" data="nav:keys">Ключ</tg-button>
 </tg-button-row>
-<footer>Шелли всегда на связи, если не думает</footer>"""
+<footer>Напиши задачу — и я возьмусь</footer>"""
 
 CLEAR_HTML = """<h2>Контекст очищен 🧹</h2>
 <p>Начнём с чистого листа — как после перезагрузки, только без тревожных звуков.</p>
