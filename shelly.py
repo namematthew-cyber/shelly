@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Шелли — агентный AI-ассистент в терминале (harness)."""
+"""Шелли — AI-агент для сервера в терминале (harness)."""
 
 import sys
 import itertools

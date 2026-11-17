@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "shelly-assistant"
 version = "0.2.0"
-description = "Шелли — агентный AI-ассистент администратора сервера с одним инструментом run_command"
+description = "Шелли — AI-агент для сервера с одним инструментом run_command"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
