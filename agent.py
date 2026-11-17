@@ -54,7 +54,7 @@ def human_error(exc):
 
 class Agent:
     def __init__(self, confirm=None, on_thinking_start=None, on_thinking_stop=None,
-                 on_tool=None, on_tool_done=None):
+                 on_tool=None, on_tool_done=None, on_retry=None):
         if not API_KEYS:
             raise RuntimeError("Нет ключей Gemini в .env (GEMINI_API_KEYS)")
         self.clients = [genai.Client(api_key=k) for k in API_KEYS]
@@ -65,6 +65,7 @@ class Agent:
         self.on_thinking_stop = on_thinking_stop
         self.on_tool = on_tool
         self.on_tool_done = on_tool_done
+        self.on_retry = on_retry
 
         self.config = types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
@@ -77,8 +78,12 @@ class Agent:
             temperature=0.3,
         )
 
-    def _request(self, stream=False):
-        """Перебирает модели и ключи; при 503 делает короткий backoff."""
+    def _request(self, stream=False, on_delta=None):
+        """Перебирает модели и ключи; 503 внутри потока тоже считается ошибкой модели.
+
+        Поток читается целиком внутри попытки: иначе 503 приходит уже после того,
+        как generate_content_stream вернул генератор, и перебор моделей не работал.
+        """
         last = None
         saw_overload = False
         for model in MODELS:
@@ -86,19 +91,26 @@ class Agent:
                 i = (self.key_index + attempt) % len(self.clients)
                 try:
                     if stream:
-                        result = self.clients[i].models.generate_content_stream(
+                        generator = self.clients[i].models.generate_content_stream(
                             model=model, contents=self.history, config=self.config
                         )
+                        pending = []
+                        result = self._read_stream(generator, pending.append)
                     else:
                         result = self.clients[i].models.generate_content(
                             model=model, contents=self.history, config=self.config
                         )
                     self.key_index = i
+                    if stream and on_delta:
+                        for delta in pending:
+                            on_delta(delta)
                     return result
                 except Exception as e:
                     last = e
                     if _is_unavailable(e):
                         saw_overload = True
+                        if self.on_retry:
+                            self.on_retry(model)
                         time.sleep(min(0.5 * (2 ** attempt), 2))
                     else:
                         time.sleep(0.3)
@@ -109,8 +121,8 @@ class Agent:
     def _generate(self):
         return self._request(stream=False)
 
-    def _open_stream(self):
-        return self._request(stream=True)
+    def _generate_stream(self, on_delta):
+        return self._request(stream=True, on_delta=on_delta)
 
     def _read_stream(self, stream, on_delta):
         """Собирает поток в один Content, отдавая куски текста наружу по мере прихода."""
@@ -172,7 +184,7 @@ class Agent:
             try:
                 try:
                     if stream:
-                        content = self._read_stream(self._open_stream(), on_delta)
+                        content = self._generate_stream(on_delta)
                     else:
                         response = self._generate()
                         content = response.candidates[0].content if response.candidates else None

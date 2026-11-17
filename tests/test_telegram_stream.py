@@ -38,38 +38,32 @@ class FakeBot:
         self.deleted.append(kwargs)
 
 
-def test_stream_view_switches_between_thinking_and_executing(monkeypatch):
+def test_status_sequence_uses_one_message(monkeypatch):
     fake = FakeBot()
     monkeypatch.setattr(tg, "bot", fake)
 
-    message = FakeMessage()
-    view = tg.StreamView(message, 321)
-    view.fallback = SimpleNamespace(message_id=7, chat=message.chat)
-
-    asyncio.run(view._push_status(view.fallback))
-    assert fake.drafts[-1]["rich_message"].html == tg.THINK_HTML
+    view = tg.StreamView(FakeMessage())
+    asyncio.run(view.start())
+    assert len(fake.messages) == 1
     assert fake.messages[-1]["text"] == tg.status_html()
 
-    view.executing = "echo ok"
-    asyncio.run(view._push_status(view.fallback, "echo ok"))
-    assert "Выполняю: echo ok" in fake.drafts[-1]["rich_message"].html
-    assert any(e["text"] == tg.status_html("echo ok") for e in fake.edits)
-    assert "tg-emoji" in fake.edits[-2]["text"]
+    asyncio.run(view._push_status(tg.status_html(command="echo ok")))
+    assert len(fake.messages) == 1
+    assert fake.edits[-1]["text"] == tg.status_html(command="echo ok")
+    assert "tg-emoji" in fake.edits[-1]["text"]
 
-    view.executing = None
-    asyncio.run(view._push_status(view.fallback, None))
-    assert fake.drafts[-1]["rich_message"].html == tg.THINK_HTML
-    assert any(e["text"] == tg.status_html() for e in fake.edits)
+    asyncio.run(view._push_status(tg.status_html(retry_model="gemini-3.1-flash-lite")))
+    assert "Проверяю модель gemini-3.1-flash-lite" in fake.edits[-1]["text"]
+
+    asyncio.run(view.close())
+    assert fake.deleted[-1]["message_id"] == 99
 
 
-def test_long_request_uses_editable_keepalive(monkeypatch):
+def test_ask_rich_sends_only_final_answer(monkeypatch):
     fake = FakeBot()
     monkeypatch.setattr(tg, "bot", fake)
-    monkeypatch.setattr(tg, "LONG_REQUEST_AFTER", 0.1)
-    monkeypatch.setattr(tg, "rich_html", lambda text: text)
 
-    async def fake_stream(prompt, data, lock, on_delta, sender):
-        await sender("часть ответа", 0.2)
+    async def fake_stream(prompt):
         return "финальный ответ"
 
     async def fake_send_rich(chat_id, text):
@@ -78,11 +72,13 @@ def test_long_request_uses_editable_keepalive(monkeypatch):
     monkeypatch.setattr(tg, "stream_agent", fake_stream)
     monkeypatch.setattr(tg, "send_rich", fake_send_rich)
 
-    asyncio.run(tg.ask_rich(FakeMessage(), "тест", 123))
+    message = FakeMessage()
+    view = tg.StreamView(message)
+    asyncio.run(view.start())
+    asyncio.run(tg.ask_rich(message, "тест", view))
 
-    assert len(fake.drafts) == 1
-    assert len(fake.edits) == 1
-    assert fake.deleted[0]["message_id"] == 7
+    assert len(fake.messages) == 1
+    assert fake.deleted[0]["message_id"] == 99
     assert fake.rich == [(1, "финальный ответ")]
 
 

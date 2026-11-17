@@ -38,9 +38,9 @@ def test_send_returns_only_final_text(monkeypatch):
     agent.history = []
     agent.on_thinking_start = agent.on_thinking_stop = None
     agent.on_tool = agent.on_tool_done = None
+    agent.on_retry = None
     monkeypatch.setattr(agent, "_trim_history", lambda: None)
     monkeypatch.setattr(agent, "_dispatch", lambda name, args: {"exit_code": 0})
-    monkeypatch.setattr(agent, "_open_stream", lambda: object())
 
     pre_tool = types.Content(parts=[
         types.Part(text="Сейчас запущу uptime."),
@@ -50,6 +50,41 @@ def test_send_returns_only_final_text(monkeypatch):
     ])
     final = types.Content(parts=[types.Part(text="Всё штатно.")])
     contents = iter([pre_tool, final])
-    monkeypatch.setattr(agent, "_read_stream", lambda stream, on_delta: next(contents))
+    monkeypatch.setattr(agent, "_generate_stream", lambda on_delta: next(contents))
 
     assert agent.send("проверь сервер", stream=True) == "Всё штатно."
+
+
+def test_stream_503_retries_next_model(monkeypatch):
+    from google.genai import types
+    import shelly.agent as agent_module
+
+    monkeypatch.setattr(agent_module, "MODELS", ["model-one", "model-two"])
+    monkeypatch.setattr(agent_module.time, "sleep", lambda _: None)
+
+    agent = Agent.__new__(Agent)
+    agent.history = []
+    agent.config = None
+    agent.key_index = 0
+    agent.clients = [SimpleNamespace(
+        models=SimpleNamespace(generate_content_stream=lambda **kwargs: object())
+    )]
+    retried = []
+    agent.on_retry = retried.append
+
+    results = iter([
+        Exception("503 UNAVAILABLE"),
+        types.Content(parts=[types.Part(text="ответ со второй модели")]),
+    ])
+
+    def fake_read(stream, on_delta):
+        value = next(results)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(agent, "_read_stream", fake_read)
+
+    content = agent._request(stream=True)
+    assert retried == ["model-one"]
+    assert content.parts[0].text == "ответ со второй модели"

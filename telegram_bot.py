@@ -9,10 +9,8 @@
 import asyncio
 import html
 import logging
-import random
 import re
 import threading
-import time
 import uuid
 
 from aiogram import Bot, Dispatcher, F
@@ -31,7 +29,7 @@ from aiogram.types import (
 
 from .agent import Agent, human_error
 from .config import (
-    ADMIN_ID, CONFIRM_TIMEOUT, LONG_REQUEST_AFTER, TG_TOKEN,
+    ADMIN_ID, CONFIRM_TIMEOUT, TG_TOKEN,
     THINK_EMOJI_CHAR, THINK_EMOJI_ID,
 )
 from .masking import mask
@@ -52,7 +50,6 @@ _pending = {}
 _pending_lock = threading.Lock()
 MAX_MESSAGE = 4096
 RICH_LIMIT = 30000
-FLUSH_INTERVAL = 0.25
 
 _CUSTOM_EMOJI = f'<tg-emoji emoji-id="{THINK_EMOJI_ID}">{html.escape(THINK_EMOJI_CHAR)}</tg-emoji>'
 # Никаких своих точек: только эмодзи и надпись, анимацию рисует сам Telegram.
@@ -73,10 +70,12 @@ def exec_plain(command):
     return f"{THINK_EMOJI_CHAR} Выполняю: {_short_command(command)}"
 
 
-def status_html(command=None):
-    """Обычное сообщение со статусом: его можно редактировать и оно остаётся в чате."""
+def status_html(command=None, retry_model=None):
+    """Обычное сообщение со статусом: редактируется и остаётся в чате до ответа."""
     if command:
         return f"{_CUSTOM_EMOJI} Выполняю: {html.escape(_short_command(command))}"
+    if retry_model:
+        return f"{_CUSTOM_EMOJI} Проверяю модель {html.escape(str(retry_model))}…"
     return f"{_CUSTOM_EMOJI} Шелли думает"
 
 
@@ -108,55 +107,13 @@ def chunks(text, size=RICH_LIMIT):
     return parts
 
 
-def make_buffer():
-    """Разделяемый между потоком агента и event loop буфер нарастающего текста."""
-    data = {"text": ""}
-    lock = threading.Lock()
-
-    def on_delta(delta):
-        with lock:
-            data["text"] += delta
-
-    return data, lock, on_delta
-
-
-async def pump(data, lock, sender):
-    """Раз в FLUSH_INTERVAL обновляем черновик; после порога — и обычное сообщение."""
-    started = time.monotonic()
-    last = None
-    while True:
-        await asyncio.sleep(FLUSH_INTERVAL)
-        with lock:
-            text = data["text"]
-        elapsed = time.monotonic() - started
-        # Долгий запрос без текста должен всё-таки показать, что бот жив.
-        if text == last and elapsed < LONG_REQUEST_AFTER:
-            continue
-        try:
-            await sender(text, elapsed)
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.debug("Стрим остановлен: %s", e)
-            return
-        last = text
-
-
-async def stream_agent(prompt, data, lock, on_delta, sender):
-    task = asyncio.create_task(pump(data, lock, sender))
+async def stream_agent(prompt):
+    """Один запрос к агенту: статусы приходят через колбэки, в чат идёт только итог."""
     try:
-        # Telegram показываем только статус и итог: промежуточный текст модели не шлём.
-        answer = await asyncio.to_thread(agent.send, prompt, True, None)
+        return await asyncio.to_thread(agent.send, prompt, True, None)
     except Exception as e:
         logger.exception("Ошибка агента: %s", e)
-        answer = human_error(e)
-    finally:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-    return answer
+        return human_error(e)
 
 
 async def send_rich(chat_id, text):
@@ -228,239 +185,86 @@ async def send_page(chat_id, page):
         )
 
 
-_AUTO = object()
-
-
 class StreamView:
-    """Один запрос: переключает индикатор между «думает» и «выполняет»."""
+    """Один запрос: одно редактируемое сообщение со статусом работы."""
 
-    def __init__(self, message, draft_id):
+    def __init__(self, message):
         self.message = message
         self.chat_id = message.chat.id
-        self.draft_id = draft_id
-        self.lock = threading.Lock()
-        self.executing = None
-        self.fallback = None
-        self.fallback_text = None
-        self.draft_text = None
         self.status_message = None
         self.status_lock = asyncio.Lock()
-
-    def set_executing(self, name, args):
-        command = _short_command((args or {}).get("command", ""))
-        with self.lock:
-            self.executing = command
-            fallback = self.fallback
-        # Команду фиксируем сразу: быстрый инструмент может завершиться раньше,
-        # чем event loop доберётся до запланированного обновления.
-        self._schedule(self._push_status(fallback, command))
-
-    def set_done(self, name=None, args=None):
-        with self.lock:
-            self.executing = None
-            self.draft_text = None
-            self.fallback_text = None
-            fallback = self.fallback
-        self._schedule(self._push_status(fallback, None))
 
     @staticmethod
     def _schedule(coro):
         if main_loop is not None:
             asyncio.run_coroutine_threadsafe(coro, main_loop)
 
-    async def _push_status(self, fallback=None, command=_AUTO):
-        if command is _AUTO:
-            with self.lock:
-                command = self.executing
-        markup = exec_html(command) if command else THINK_HTML
-        plain = exec_plain(command) if command else THINK_PLAIN
-        try:
-            await bot.send_rich_message_draft(
-                chat_id=self.chat_id,
-                draft_id=self.draft_id,
-                rich_message=InputRichMessage(html=markup),
-            )
-        except Exception as e:
-            logger.debug("Не удалось обновить статус черновика: %s", e)
+    async def start(self):
+        await self._push_status(status_html())
 
-        # Обычное сообщение остаётся в чате до финального ответа: так команды
-        # реально видны, даже если executed меньше секунды.
+    def set_executing(self, name, args):
+        text = status_html(command=_short_command((args or {}).get("command", "")))
+        self._schedule(self._push_status(text))
+
+    def set_done(self, name=None, args=None):
+        self._schedule(self._push_status(status_html()))
+
+    def set_retry(self, model):
+        self._schedule(self._push_status(status_html(retry_model=model)))
+
+    async def _push_status(self, text):
         async with self.status_lock:
             try:
                 if self.status_message is None:
                     self.status_message = await bot.send_message(
                         chat_id=self.chat_id,
-                        text=status_html(command),
+                        text=text,
                         parse_mode=ParseMode.HTML,
                         disable_notification=True,
                     )
                 else:
                     await bot.edit_message_text(
-                        text=status_html(command),
+                        text=text,
                         chat_id=str(self.chat_id),
                         message_id=self.status_message.message_id,
                         parse_mode=ParseMode.HTML,
                     )
             except Exception as e:
-                logger.debug("Статус выполнения не показан: %s", e)
+                logger.debug("Статус не обновлён: %s", e)
 
-        if fallback is not None:
-            try:
-                await bot.edit_message_text(
-                    text=html.escape(plain),
-                    chat_id=str(self.chat_id),
-                    message_id=fallback.message_id,
-                )
-            except Exception as e:
-                logger.debug("Не удалось обновить keepalive-статус: %s", e)
-
-
-async def ask_rich(message, prompt, draft_id, view=None):
-    view = view or StreamView(message, draft_id)
-    chat_id = view.chat_id
-    data, lock, on_delta = make_buffer()
-
-    async def partial(text, elapsed=0):
-        with view.lock:
-            executing = view.executing
-
-        # Rich-draft живёт ~30 секунд. Если запрос затянулся, параллельно держим
-        # обычное сообщение, которое можно редактировать сколь угодно долго.
-        if elapsed >= LONG_REQUEST_AFTER and view.fallback is None:
-            status = exec_plain(executing) if executing else THINK_PLAIN
-            try:
-                view.fallback = await message.answer(status)
-            except Exception as e:
-                logger.debug("Не удалось создать keepalive-сообщение: %s", e)
-
-        # Пока идёт команда, черновик показывает «Выполняю: …», а не поток текста.
-        if executing:
+    async def close(self):
+        if self.status_message is None:
             return
-
-        if view.fallback is not None and text and text != view.fallback_text:
-            try:
-                await bot.edit_message_text(
-                    text=html.escape(mask(text)),
-                    chat_id=str(chat_id),
-                    message_id=view.fallback.message_id,
-                )
-                view.fallback_text = text
-            except Exception as e:
-                logger.debug("Keepalive-редактирование пропущено: %s", e)
-
-        if text and text != view.draft_text:
-            await bot.send_rich_message_draft(
-                chat_id=chat_id,
-                draft_id=view.draft_id,
-                rich_message=InputRichMessage(html=rich_html(text)),
-            )
-            view.draft_text = text
-
-    answer = await stream_agent(prompt, data, lock, on_delta, partial)
-
-    if view.fallback is not None:
         try:
-            await bot.delete_message(chat_id=str(chat_id), message_id=view.fallback.message_id)
-        except Exception as e:
-            logger.debug("Не удалось удалить keepalive-сообщение: %s", e)
-
-    if view.status_message is not None:
-        try:
-            await bot.delete_message(chat_id=str(chat_id), message_id=view.status_message.message_id)
-        except Exception as e:
-            logger.debug("Не удалось удалить статус выполнения: %s", e)
-
-    await send_rich(chat_id, answer)
-
-
-async def ask_plain(message, prompt):
-    """Фолбэк, если rich-drafts недоступны: редактируем обычное сообщение."""
-    placeholder = await message.answer(THINK_PLAIN)
-    chat_id = placeholder.chat.id
-    data, lock, on_delta = make_buffer()
-    status = {"executing": None}
-    status_lock = threading.Lock()
-
-    async def edit_status(plain):
-        try:
-            await bot.edit_message_text(
-                text=html.escape(plain),
-                chat_id=str(chat_id),
-                message_id=placeholder.message_id,
+            await bot.delete_message(
+                chat_id=str(self.chat_id),
+                message_id=self.status_message.message_id,
             )
         except Exception as e:
-            logger.debug("Статус обычного сообщения не обновлён: %s", e)
+            logger.debug("Не удалось удалить статус: %s", e)
 
-    def schedule_status(plain):
-        if main_loop is not None:
-            asyncio.run_coroutine_threadsafe(edit_status(plain), main_loop)
 
-    def on_tool(name, args):
-        command = _short_command((args or {}).get("command", ""))
-        with status_lock:
-            status["executing"] = command
-        schedule_status(exec_plain(command))
-
-    def on_tool_done(name=None, args=None):
-        with status_lock:
-            status["executing"] = None
-        schedule_status(THINK_PLAIN)
-
-    async def partial(text, elapsed=0):
-        with status_lock:
-            if status["executing"]:
-                return
-        await bot.edit_message_text(
-            text=html.escape(mask(text)),
-            chat_id=str(chat_id),
-            message_id=placeholder.message_id,
-        )
-
-    agent.on_tool = on_tool
-    agent.on_tool_done = on_tool_done
-    try:
-        answer = await stream_agent(prompt, data, lock, on_delta, partial)
-    finally:
-        agent.on_tool = None
-        agent.on_tool_done = None
-
-    parts = chunks(answer, MAX_MESSAGE)
-    try:
-        await bot.edit_message_text(
-            text=html.escape(mask(parts[0])),
-            chat_id=str(chat_id),
-            message_id=placeholder.message_id,
-        )
-        for part in parts[1:]:
-            await bot.send_message(chat_id=str(chat_id), text=html.escape(mask(part)))
-    except Exception as e:
-        logger.exception("Не удалось отправить ответ: %s", e)
-        await bot.send_message(chat_id=str(chat_id), text=f"Не смогла отправить ответ: {e}")
+async def ask_rich(message, prompt, view=None):
+    """Один запрос: статус в чате, в ответ уходит только итог."""
+    view = view or StreamView(message)
+    answer = await stream_agent(prompt)
+    await view.close()
+    await send_rich(view.chat_id, answer)
 
 
 async def ask(message, prompt):
     async with _busy:
-        chat_id = message.chat.id
-        draft_id = random.randint(1, 2_147_483_647)
-        view = StreamView(message, draft_id)
-        try:
-            await bot.send_rich_message_draft(
-                chat_id=chat_id,
-                draft_id=draft_id,
-                rich_message=InputRichMessage(html=THINK_HTML),
-            )
-        except Exception as e:
-            logger.info("Rich draft недоступен, использую обычные сообщения: %s", e)
-            await ask_plain(message, prompt)
-            return
-
+        view = StreamView(message)
+        await view.start()
         agent.on_tool = view.set_executing
         agent.on_tool_done = view.set_done
+        agent.on_retry = view.set_retry
         try:
-            await ask_rich(message, prompt, draft_id, view)
+            await ask_rich(message, prompt, view)
         finally:
             agent.on_tool = None
             agent.on_tool_done = None
+            agent.on_retry = None
 
 
 def _split_confirm(text):
@@ -690,7 +494,7 @@ async def main():
     ])
 
     me = await bot.get_me()
-    logger.info("Шелли в Telegram: @%s, стриминг через rich messages", me.username)
+    logger.info("Шелли в Telegram: @%s, статус в чате, итог через rich messages", me.username)
 
     try:
         await dp.start_polling(bot)
