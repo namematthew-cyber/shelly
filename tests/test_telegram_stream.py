@@ -203,7 +203,7 @@ def test_create_button_points_to_bot_management_link(monkeypatch, tmp_path):
     assert tg.create_bot_url(42) == "https://t.me/BotFather"
 
 
-def test_managed_bot_returns_token_and_next_step(monkeypatch):
+def test_managed_bot_returns_token_and_next_step(monkeypatch, tmp_path):
     class ManagedBot(FakeBot):
         def __init__(self):
             super().__init__()
@@ -216,6 +216,9 @@ def test_managed_bot_returns_token_and_next_step(monkeypatch):
     fake = ManagedBot()
     monkeypatch.setattr(tg, "bot", fake)
     monkeypatch.setattr(tg, "_managed", {})
+    image = tmp_path / "bot-created.png"
+    image.write_bytes(b"png")
+    monkeypatch.setattr(tg, "BOT_CREATED_IMAGE", image)
 
     info = SimpleNamespace(
         user=SimpleNamespace(id=99),
@@ -227,14 +230,16 @@ def test_managed_bot_returns_token_and_next_step(monkeypatch):
     assert tg._managed[99] == {
         "username": "shelly_user_bot", "token": "123456:AA_token",
     }
-    sent = fake.messages[-1]
+    assert len(fake.photos) == 1
+    sent = fake.photos[0]
     assert sent["chat_id"] == 99
     assert sent["parse_mode"] == ParseMode.HTML
-    assert "@shelly_user_bot" in sent["text"]
-    assert "123456:AA_token" in sent["text"]
-    assert "Дальше по шагам" in sent["text"]
-    assert "shelly-doctor" in sent["text"]
+    assert "@shelly_user_bot" in sent["caption"]
+    assert "123456:AA_token" in sent["caption"]
+    assert "Дальше по шагам" in sent["caption"]
+    assert "shelly-doctor" in sent["caption"]
     assert sent["reply_markup"].inline_keyboard[0][0].url == "https://t.me/shelly_user_bot"
+    assert fake.messages == []
 
 
 def test_managed_bot_update_is_dispatched(monkeypatch):

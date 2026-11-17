@@ -266,6 +266,7 @@ def _inline_keyboard(rows, user_id=None):
 
 
 WELCOME_IMAGE = Path(__file__).with_name("assets") / "welcome.png"
+BOT_CREATED_IMAGE = Path(__file__).with_name("assets") / "bot-created.png"
 
 STATIC_PAGES = {
     "menu": (texts.WELCOME_HTML, texts.WELCOME_PLAIN, texts.WELCOME_BUTTONS),
@@ -549,9 +550,22 @@ async def handle_managed_bot(info):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
         text="Перейти в бота", url=f"https://t.me/{new_bot.username}",
     )]])
+    caption = texts.bot_created_html(new_bot.username, token)
+    if BOT_CREATED_IMAGE.is_file():
+        try:
+            await bot.send_photo(
+                chat_id=user.id,
+                photo=FSInputFile(BOT_CREATED_IMAGE),
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
+            )
+            return
+        except Exception as e:
+            logger.exception("Не удалось отправить инфографику созданного бота: %s", e)
     await bot.send_message(
         chat_id=user.id,
-        text=texts.bot_created_html(new_bot.username, token),
+        text=caption,
         parse_mode=ParseMode.HTML,
         reply_markup=keyboard,
         disable_web_page_preview=True,
