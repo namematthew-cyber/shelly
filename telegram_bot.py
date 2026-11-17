@@ -10,6 +10,7 @@ import asyncio
 import html
 import logging
 import random
+import re
 import threading
 import time
 import uuid
@@ -29,11 +30,15 @@ from aiogram.types import (
 
 from .agent import Agent, human_error
 from .config import (
-    ADMIN_ID, CONFIRM_TIMEOUT, GREETING_PROMPT, LONG_REQUEST_AFTER, TG_TOKEN,
+    ADMIN_ID, CONFIRM_TIMEOUT, LONG_REQUEST_AFTER, TG_TOKEN,
     THINK_EMOJI_CHAR, THINK_EMOJI_ID,
 )
 from .masking import mask
-from .texts import ABOUT, GEMINI_KEY, HELP, INSTALL, WELCOME
+from .texts import (
+    ABOUT_HTML, ABOUT_PLAIN, CLEAR_HTML, CLEAR_PLAIN,
+    GEMINI_KEY_HTML, GEMINI_KEY_PLAIN, HELP_HTML, HELP_PLAIN,
+    INSTALL_HTML, INSTALL_PLAIN, WELCOME_HTML, WELCOME_PLAIN,
+)
 
 logger = logging.getLogger("shelly.tg")
 
@@ -63,11 +68,12 @@ def allowed(user_id):
 
 
 def rich_html(text):
-    """Экранируем вывод и переводим переводы строк в <br/> для rich-сообщений."""
+    """Безопасный dynamic-текст с лёгкой структурой и подписью Шелли."""
     safe = html.escape(mask(text or ""))
-    if len(safe) > RICH_LIMIT:
-        safe = safe[:RICH_LIMIT] + "…"
-    return safe.replace("\n", "<br/>")
+    limit = RICH_LIMIT - 100  # запас на <p>, <footer> и экранирование
+    if len(safe) > limit:
+        safe = safe[:limit] + "…"
+    return f"<p>{safe.replace('\n', '<br/>')}</p><footer>Шелли</footer>"
 
 
 def chunks(text, size=RICH_LIMIT):
@@ -145,6 +151,26 @@ async def send_rich(chat_id, text):
         except Exception as e:
             logger.exception("Не удалось отправить rich-сообщение: %s", e)
             await bot.send_message(chat_id=str(chat_id), text=html.escape(mask(part)))
+
+
+async def send_rich_html(chat_id, markup, plain):
+    """Статичные тексты Шелли: сначала rich, при неудаче — простой текст."""
+    try:
+        return await bot.send_rich_message(
+            chat_id=chat_id,
+            rich_message=InputRichMessage(html=markup),
+        )
+    except Exception as e:
+        logger.exception("Rich-сообщение недоступно, отправляю простой текст: %s", e)
+        return await bot.send_message(chat_id=str(chat_id), text=plain)
+
+
+STATIC_PAGES = {
+    "about": (ABOUT_HTML, ABOUT_PLAIN),
+    "install": (INSTALL_HTML, INSTALL_PLAIN),
+    "keys": (GEMINI_KEY_HTML, GEMINI_KEY_PLAIN),
+    "help": (HELP_HTML, HELP_PLAIN),
+}
 
 
 async def ask_rich(message, prompt, draft_id):
@@ -241,6 +267,28 @@ async def ask(message, prompt):
         await ask_rich(message, prompt, draft_id)
 
 
+def _split_confirm(text):
+    lines = (text or "").split("\n", 1)
+    title = lines[0].strip() or "Нужно подтверждение"
+    command = mask(lines[1].strip()) if len(lines) > 1 else ""
+    return title, command
+
+
+def confirm_rich(text):
+    title, command = _split_confirm(text)
+    return (
+        f"<h2>{html.escape(title)}</h2>"
+        f"<pre><code>{html.escape(command)}</code></pre>"
+        "<footer>Решение действует только для этой команды</footer>"
+    )
+
+
+def confirm_plain(text, status=""):
+    title, command = _split_confirm(text)
+    prefix = f"{status} " if status else ""
+    return f"<b>{html.escape(prefix + title)}</b>\n\n<pre>{html.escape(command)}</pre>"
+
+
 def tg_confirm(text):
     """Подтверждение из потока агента: отправляем кнопки и ждём ответа."""
     loop = main_loop
@@ -251,14 +299,14 @@ def tg_confirm(text):
     event = threading.Event()
     box = {}
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Да", callback_data=f"cfm:yes:{token}"),
-        InlineKeyboardButton(text="Нет", callback_data=f"cfm:no:{token}"),
+        InlineKeyboardButton(text="✅ Да", callback_data=f"cfm:yes:{token}"),
+        InlineKeyboardButton(text="⛔ Нет", callback_data=f"cfm:no:{token}"),
     ]])
 
     future = asyncio.run_coroutine_threadsafe(
         bot.send_rich_message(
             chat_id=str(ADMIN_ID),
-            rich_message=InputRichMessage(html=rich_html(text)),
+            rich_message=InputRichMessage(html=confirm_rich(text)),
             reply_markup=keyboard,
         ),
         loop,
@@ -277,13 +325,19 @@ def tg_confirm(text):
         _pending.pop(token, None)
 
     answer = box.get("answer") == "yes"
-    header = "Подтверждено." if answer else ("Отменено." if done else "Таймаут — отменила.")
+    if answer:
+        label = "✅ Подтверждено"
+    elif done:
+        label = "⛔ Отменено"
+    else:
+        label = "⏱ Таймаут — отменила"
     asyncio.run_coroutine_threadsafe(
         bot.edit_message_text(
-            text=html.escape(mask(f"{header}\n\n{text}")),
+            text=confirm_plain(text, label),
             chat_id=str(msg.chat.id),
             message_id=msg.message_id,
             parse_mode=ParseMode.HTML,
+            reply_markup=None,
         ),
         loop,
     )
@@ -309,33 +363,50 @@ async def on_confirm(callback: CallbackQuery):
     await callback.answer("Приняла." if answer == "yes" else "Отклонила.")
 
 
+@dp.callback_query(F.data.startswith("nav:"))
+async def on_nav(callback: CallbackQuery):
+    if not allowed(callback.from_user.id):
+        await callback.answer("Это не для тебя.", show_alert=True)
+        return
+
+    page = callback.data.split(":", 1)[1]
+    entry = STATIC_PAGES.get(page)
+    if not entry:
+        await callback.answer("Такой страницы нет.", show_alert=True)
+        return
+
+    markup, plain = entry
+    await callback.answer()
+    await send_rich_html(callback.message.chat.id, markup, plain)
+
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich(message.chat.id, WELCOME)
-    await ask(message, GREETING_PROMPT)
+    # Только приветствие: агент запускается по первой реальной задаче.
+    await send_rich_html(message.chat.id, WELCOME_HTML, WELCOME_PLAIN)
 
 
 @dp.message(Command("about"))
 async def cmd_about(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich(message.chat.id, ABOUT)
+    await send_rich_html(message.chat.id, ABOUT_HTML, ABOUT_PLAIN)
 
 
 @dp.message(Command("install"))
 async def cmd_install(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich(message.chat.id, INSTALL)
+    await send_rich_html(message.chat.id, INSTALL_HTML, INSTALL_PLAIN)
 
 
 @dp.message(Command("keys"))
 async def cmd_keys(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich(message.chat.id, GEMINI_KEY)
+    await send_rich_html(message.chat.id, GEMINI_KEY_HTML, GEMINI_KEY_PLAIN)
 
 
 @dp.message(Command("clear"))
@@ -345,17 +416,14 @@ async def cmd_clear(message: Message):
     global agent
     async with _busy:
         agent = Agent(confirm=tg_confirm)
-    await send_rich(
-        message.chat.id,
-        "Контекст очищен. Начнём с чистого листа — как после перезагрузки, только без тревожных звуков.",
-    )
+    await send_rich_html(message.chat.id, CLEAR_HTML, CLEAR_PLAIN)
 
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     if not allowed(message.from_user.id):
         return
-    await send_rich(message.chat.id, HELP)
+    await send_rich_html(message.chat.id, HELP_HTML, HELP_PLAIN)
 
 
 @dp.message(F.text)
@@ -371,7 +439,7 @@ async def main():
     agent = Agent(confirm=tg_confirm)
 
     await bot.set_my_commands([
-        BotCommand(command="start", description="Приветствие и о проекте"),
+        BotCommand(command="start", description="Приветствие и быстрый старт"),
         BotCommand(command="about", description="Что такое Шелли"),
         BotCommand(command="install", description="Как установить на свой сервер"),
         BotCommand(command="keys", description="Как получить ключ Gemini"),

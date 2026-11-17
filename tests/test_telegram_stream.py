@@ -55,3 +55,24 @@ def test_long_request_uses_editable_keepalive(monkeypatch):
     assert len(fake.edits) == 1
     assert fake.deleted[0]["message_id"] == 7
     assert fake.rich == [(1, "финальный ответ")]
+
+
+def test_start_sends_only_welcome(monkeypatch):
+    calls = []
+
+    async def fake_send(chat_id, markup, plain):
+        calls.append("welcome")
+
+    async def fake_ask(message, prompt):
+        calls.append("agent")
+
+    monkeypatch.setattr(tg, "send_rich_html", fake_send)
+    monkeypatch.setattr(tg, "ask", fake_ask)
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=1),
+        chat=SimpleNamespace(id=1),
+    )
+    asyncio.run(tg.cmd_start(message))
+
+    assert calls == ["welcome"]

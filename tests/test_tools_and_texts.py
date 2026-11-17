@@ -1,6 +1,6 @@
 from shelly import tools
 from shelly.config import setting
-from shelly.texts import ABOUT, GEMINI_KEY, HELP, INSTALL, WELCOME
+from shelly.texts import GEMINI_KEY, HELP, INSTALL
 
 
 def test_only_one_tool():
@@ -30,4 +30,18 @@ def test_texts_have_commands_and_install_steps():
         assert command in HELP
     assert "git clone" in INSTALL
     assert "aistudio.google.com" in GEMINI_KEY
-    assert ABOUT in WELCOME
+
+
+def test_texts_are_rich_and_readable():
+    from shelly.texts import (
+        ABOUT_HTML, HELP_HTML, INSTALL_HTML, WELCOME_HTML, WELCOME_PLAIN,
+    )
+
+    assert "<h1>" in WELCOME_HTML
+    assert "<tg-button-row>" in WELCOME_HTML
+    assert "nav:about" in WELCOME_HTML
+    assert "<ol>" in INSTALL_HTML and "<code>" in INSTALL_HTML
+    assert "<ul>" in ABOUT_HTML and "<footer>" in ABOUT_HTML
+    assert "<ul>" in HELP_HTML
+    assert "<h1>" not in WELCOME_PLAIN
+    assert "Шелли" in WELCOME_PLAIN
