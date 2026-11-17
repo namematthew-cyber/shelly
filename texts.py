@@ -128,13 +128,21 @@ def bot_created_html(username: str, token: str) -> str:
     safe_token = html.escape(str(token))
     return f"""Бот {name} создан.
 
-Токен: <code>{safe_token}</code> — понадобится при установке. Не публикуйте его.
+Токен: <code>{safe_token}</code>. Он понадобится при установке — не публикуйте его.
 
-Дальше: ключ Gemini — <a href="{_KEYS_URL}">AI Studio</a>. Потом установите Shelly:
+Дальше по шагам.
+
+1. Получите ключ Gemini: <a href="{_KEYS_URL}">AI Studio</a> → Create API key.
+
+2. Зайдите на свой VPS по SSH и выполните:
 <pre><code>git clone {_REPO_TEXT} shelly && cd shelly
 sudo ./install.sh --service</code></pre>
+Установщик спросит токен бота и ключ Gemini — вставьте их.
 
-Переходите в своего бота и пишите задачу."""
+3. Проверьте установку:
+<pre><code>.venv/bin/shelly-doctor</code></pre>
+
+4. Переходите в своего бота и пишите задачу, например «проверь сервер»."""
 
 
 def _plain(markup: str) -> str:

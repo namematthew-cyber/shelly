@@ -232,6 +232,8 @@ def test_managed_bot_returns_token_and_next_step(monkeypatch):
     assert sent["parse_mode"] == ParseMode.HTML
     assert "@shelly_user_bot" in sent["text"]
     assert "123456:AA_token" in sent["text"]
+    assert "Дальше по шагам" in sent["text"]
+    assert "shelly-doctor" in sent["text"]
     assert sent["reply_markup"].inline_keyboard[0][0].url == "https://t.me/shelly_user_bot"
 
 
