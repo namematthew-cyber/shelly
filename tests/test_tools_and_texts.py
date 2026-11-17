@@ -39,6 +39,7 @@ def test_texts_are_plain_html_with_inline_buttons():
         "menu": texts.WELCOME_HTML,
         "about": texts.ABOUT_HTML,
         "install": texts.INSTALL_HTML,
+        "connect": texts.CONNECT_HTML,
         "keys": texts.GEMINI_KEY_HTML,
         "help": texts.HELP_HTML,
         "examples": texts.EXAMPLES_HTML,
@@ -49,6 +50,7 @@ def test_texts_are_plain_html_with_inline_buttons():
         "menu": texts.WELCOME_BUTTONS,
         "about": texts.ABOUT_BUTTONS,
         "install": texts.INSTALL_BUTTONS,
+        "connect": texts.CONNECT_BUTTONS,
         "keys": texts.GEMINI_KEY_BUTTONS,
         "help": texts.HELP_BUTTONS,
         "examples": texts.EXAMPLES_BUTTONS,
@@ -83,3 +85,30 @@ def test_texts_are_plain_html_with_inline_buttons():
 
     assert "<" not in texts.WELCOME_PLAIN
     assert "Шелли" in texts.WELCOME_PLAIN
+
+
+def test_static_pages_have_at_most_four_buttons_two_per_row():
+    from shelly import texts
+
+    pages = {
+        "menu": texts.WELCOME_BUTTONS,
+        "about": texts.ABOUT_BUTTONS,
+        "install": texts.INSTALL_BUTTONS,
+        "connect": texts.CONNECT_BUTTONS,
+        "keys": texts.GEMINI_KEY_BUTTONS,
+        "help": texts.HELP_BUTTONS,
+        "examples": texts.EXAMPLES_BUTTONS,
+        "security": texts.SECURITY_BUTTONS,
+        "clear": texts.CLEAR_BUTTONS,
+    }
+    for name, rows in pages.items():
+        assert all(len(row) <= 2 for row in rows), name
+        assert sum(len(row) for row in rows) <= 4, name
+
+    # В приветствии нет кнопки «Закрыть» — только действия по установке.
+    assert not any(
+        spec[:2] == ("nav", "close")
+        for row in texts.WELCOME_BUTTONS for spec in row
+    )
+    assert "выполняет команды" in texts.WELCOME_HTML
+
