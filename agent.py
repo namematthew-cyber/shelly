@@ -159,7 +159,6 @@ class Agent:
             role="user", parts=[types.Part(text=text)]
         ))
 
-        spoken = []
         for _ in range(STEP_LIMIT):
             step_text = []
 
@@ -193,12 +192,8 @@ class Agent:
             calls = [p for p in parts if getattr(p, "function_call", None)]
 
             if not calls:
-                final = "\n".join(p.text for p in parts if getattr(p, "text", None))
-                return "".join(spoken) + final if stream else final
-
-            # Текст до вызова инструмента тоже показываем стримингом
-            if stream and step_text:
-                spoken.append("".join(step_text))
+                # Промежуточные реплики до инструментов в итоговый ответ не попадают.
+                return "\n".join(p.text for p in parts if getattr(p, "text", None))
 
             responses = []
             for part in calls:

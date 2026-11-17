@@ -29,3 +29,27 @@ def test_read_stream_collects_text_and_deltas():
     content = agent._read_stream([chunk("При"), chunk("вет!")], deltas.append)
     assert deltas == ["При", "вет!"]
     assert content.parts[0].text == "Привет!"
+
+
+def test_send_returns_only_final_text(monkeypatch):
+    from google.genai import types
+
+    agent = Agent.__new__(Agent)
+    agent.history = []
+    agent.on_thinking_start = agent.on_thinking_stop = None
+    agent.on_tool = agent.on_tool_done = None
+    monkeypatch.setattr(agent, "_trim_history", lambda: None)
+    monkeypatch.setattr(agent, "_dispatch", lambda name, args: {"exit_code": 0})
+    monkeypatch.setattr(agent, "_open_stream", lambda: object())
+
+    pre_tool = types.Content(parts=[
+        types.Part(text="Сейчас запущу uptime."),
+        types.Part(function_call=types.FunctionCall(
+            name="run_command", args={"command": "uptime"},
+        )),
+    ])
+    final = types.Content(parts=[types.Part(text="Всё штатно.")])
+    contents = iter([pre_tool, final])
+    monkeypatch.setattr(agent, "_read_stream", lambda stream, on_delta: next(contents))
+
+    assert agent.send("проверь сервер", stream=True) == "Всё штатно."

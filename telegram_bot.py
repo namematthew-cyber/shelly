@@ -138,7 +138,8 @@ async def pump(data, lock, sender):
 async def stream_agent(prompt, data, lock, on_delta, sender):
     task = asyncio.create_task(pump(data, lock, sender))
     try:
-        answer = await asyncio.to_thread(agent.send, prompt, True, on_delta)
+        # Telegram показываем только статус и итог: промежуточный текст модели не шлём.
+        answer = await asyncio.to_thread(agent.send, prompt, True, None)
     except Exception as e:
         logger.exception("Ошибка агента: %s", e)
         answer = human_error(e)
