@@ -98,6 +98,11 @@ def test_dynamic_messages_have_no_signature():
     assert "Шелли" not in rendered
 
 
+def test_static_pages_cover_full_menu():
+    for page in ("menu", "about", "install", "keys", "help", "examples", "security"):
+        assert page in tg.STATIC_PAGES
+
+
 def test_start_sends_only_welcome(monkeypatch):
     calls = []
 

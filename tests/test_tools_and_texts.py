@@ -42,8 +42,16 @@ def test_texts_are_rich_and_readable():
     assert HELP_HTML.count("<p><br/></p>") >= 4
     assert "<tg-button-row>" in WELCOME_HTML
     assert "nav:about" in WELCOME_HTML
-    assert "<ol>" in INSTALL_HTML and "<code>" in INSTALL_HTML
-    assert "<ul>" in ABOUT_HTML and "<footer>" in ABOUT_HTML
+    assert "<h2>" in INSTALL_HTML and "<pre><code>" in INSTALL_HTML
+    assert 'type="copy_text"' in INSTALL_HTML
+    assert "<ul>" in ABOUT_HTML and "nav:menu" in ABOUT_HTML
     assert "<ul>" in HELP_HTML
+
+    from shelly.texts import EXAMPLES_HTML, GEMINI_KEY_HTML, SECURITY_HTML
+
+    assert 'type="switch_inline_query_current_chat"' in EXAMPLES_HTML
+    assert 'type="url"' in GEMINI_KEY_HTML
+    assert "SHELLY_CONFIRM_ALL" in SECURITY_HTML
     assert "<h1>" not in WELCOME_PLAIN
     assert "Шелли" in WELCOME_PLAIN
+    assert "Скопировать" not in WELCOME_PLAIN
