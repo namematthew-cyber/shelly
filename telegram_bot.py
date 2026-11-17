@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Telegram-адаптер Шелли: тонкий слой над общим Agent.
 
-Доступ настраивается через SHELLY_ADMIN_ID.
+Бот отвечает всем: у каждого пользователя свой агент и история. Команды доступны только
+в собственной установке; подтверждать их может лишь владелец (SHELLY_ADMIN_ID).
 Опасные команды подтверждаются inline-кнопками Да/Нет.
 Анимированный черновик показывает «Шелли думает», команды и ретраи идут отдельным
 редактируемым статусом, а в чат уходит только итоговый rich-ответ.
@@ -10,6 +11,7 @@
 import asyncio
 import html
 import logging
+from collections import OrderedDict
 import random
 import re
 import threading
@@ -46,9 +48,10 @@ if not TG_TOKEN or not ADMIN_ID:
 bot = Bot(token=TG_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-agent = None
 main_loop = None
-_busy = asyncio.Lock()
+_agents = OrderedDict()
+_AGENT_LIMIT = 200
+_user_locks = {}
 _pending = {}
 _pending_lock = threading.Lock()
 MAX_MESSAGE = 4096
@@ -88,8 +91,30 @@ def status_html(command=None, retry_model=None):
     return f"{_CUSTOM_EMOJI} Шелли думает"
 
 
-def allowed(user_id):
+def is_owner(user_id):
     return bool(ADMIN_ID and user_id == ADMIN_ID)
+
+
+def get_agent(user_id):
+    """Свой агент на пользователя: история не смешивается, команды — только у владельца."""
+    key = int(user_id)
+    active = _agents.get(key)
+    if active is not None:
+        _agents.move_to_end(key)
+        return active
+    owner = is_owner(key)
+    active = Agent(confirm=tg_confirm if owner else None, public=not owner)
+    _agents[key] = active
+    if len(_agents) > _AGENT_LIMIT:
+        _agents.popitem(last=False)
+    return active
+
+
+def user_lock(user_id):
+    lock = _user_locks.get(user_id)
+    if lock is None:
+        lock = _user_locks[user_id] = asyncio.Lock()
+    return lock
 
 
 def rich_html(text):
@@ -116,10 +141,10 @@ def chunks(text, size=RICH_LIMIT):
     return parts
 
 
-async def stream_agent(prompt):
+async def stream_agent(prompt, active_agent):
     """Один запрос к агенту: статусы приходят через колбэки, в чат идёт только итог."""
     try:
-        return await asyncio.to_thread(agent.send, prompt, True, None)
+        return await asyncio.to_thread(active_agent.send, prompt, True, None)
     except Exception as e:
         logger.exception("Ошибка агента: %s", e)
         return human_error(e)
@@ -164,6 +189,7 @@ STATIC_PAGES = {
     "menu": (texts.WELCOME_HTML, texts.WELCOME_PLAIN, texts.WELCOME_BUTTONS),
     "about": (texts.ABOUT_HTML, texts.ABOUT_PLAIN, texts.ABOUT_BUTTONS),
     "install": (texts.INSTALL_HTML, texts.INSTALL_PLAIN, texts.INSTALL_BUTTONS),
+    "connect": (texts.CONNECT_HTML, texts.CONNECT_PLAIN, texts.CONNECT_BUTTONS),
     "keys": (texts.GEMINI_KEY_HTML, texts.GEMINI_KEY_PLAIN, texts.GEMINI_KEY_BUTTONS),
     "help": (texts.HELP_HTML, texts.HELP_PLAIN, texts.HELP_BUTTONS),
     "examples": (texts.EXAMPLES_HTML, texts.EXAMPLES_PLAIN, texts.EXAMPLES_BUTTONS),
@@ -286,28 +312,30 @@ class StreamView:
             logger.debug("Не удалось удалить статус: %s", e)
 
 
-async def ask_rich(message, prompt, view=None):
+async def ask_rich(message, prompt, view=None, active_agent=None):
     """Один запрос: статус в чате, в ответ уходит только итог."""
     view = view or StreamView(message)
-    answer = await stream_agent(prompt)
+    answer = await stream_agent(prompt, active_agent)
     await view.hold_command()
     await view.close()
     await send_rich(view.chat_id, answer)
 
 
 async def ask(message, prompt):
-    async with _busy:
+    user_id = message.from_user.id
+    async with user_lock(user_id):
+        active_agent = get_agent(user_id)
         view = StreamView(message)
         await view.start()
-        agent.on_tool = view.set_executing
-        agent.on_tool_done = view.set_done
-        agent.on_retry = view.set_retry
+        active_agent.on_tool = view.set_executing
+        active_agent.on_tool_done = view.set_done
+        active_agent.on_retry = view.set_retry
         try:
-            await ask_rich(message, prompt, view)
+            await ask_rich(message, prompt, view, active_agent)
         finally:
-            agent.on_tool = None
-            agent.on_tool_done = None
-            agent.on_retry = None
+            active_agent.on_tool = None
+            active_agent.on_tool_done = None
+            active_agent.on_retry = None
 
 
 def _split_confirm(text):
@@ -389,7 +417,8 @@ def tg_confirm(text):
 
 @dp.callback_query(F.data.startswith("cfm:"))
 async def on_confirm(callback: CallbackQuery):
-    if not allowed(callback.from_user.id):
+    # Подтверждать команды может только владелец сервера.
+    if not is_owner(callback.from_user.id):
         await callback.answer("Это не для тебя.", show_alert=True)
         return
 
@@ -408,10 +437,6 @@ async def on_confirm(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("nav:"))
 async def on_nav(callback: CallbackQuery):
-    if not allowed(callback.from_user.id):
-        await callback.answer("Это не для тебя.", show_alert=True)
-        return
-
     page = callback.data.split(":", 1)[1]
 
     if page == "close":
@@ -447,88 +472,75 @@ async def on_nav(callback: CallbackQuery):
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    if not allowed(message.from_user.id):
-        return
     # Только приветствие: агент запускается по первой реальной задаче.
     await send_page(message.chat.id, "menu")
 
 
 @dp.message(Command("menu"))
 async def cmd_menu(message: Message):
-    if not allowed(message.from_user.id):
-        return
     await send_page(message.chat.id, "menu")
 
 
 @dp.message(Command("about"))
 async def cmd_about(message: Message):
-    if not allowed(message.from_user.id):
-        return
     await send_page(message.chat.id, "about")
 
 
 @dp.message(Command("install"))
 async def cmd_install(message: Message):
-    if not allowed(message.from_user.id):
-        return
     await send_page(message.chat.id, "install")
+
+
+@dp.message(Command("connect"))
+async def cmd_connect(message: Message):
+    await send_page(message.chat.id, "connect")
 
 
 @dp.message(Command("keys"))
 async def cmd_keys(message: Message):
-    if not allowed(message.from_user.id):
-        return
     await send_page(message.chat.id, "keys")
 
 
 @dp.message(Command("examples"))
 async def cmd_examples(message: Message):
-    if not allowed(message.from_user.id):
-        return
     await send_page(message.chat.id, "examples")
 
 
 @dp.message(Command("security"))
 async def cmd_security(message: Message):
-    if not allowed(message.from_user.id):
-        return
     await send_page(message.chat.id, "security")
 
 
 @dp.message(Command("clear"))
 async def cmd_clear(message: Message):
-    if not allowed(message.from_user.id):
-        return
-    global agent
-    async with _busy:
-        agent = Agent(confirm=tg_confirm)
+    user_id = message.from_user.id
+    async with user_lock(user_id):
+        _agents.pop(user_id, None)
     await send_page(message.chat.id, "clear")
 
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
-    if not allowed(message.from_user.id):
-        return
     await send_page(message.chat.id, "help")
 
 
 @dp.message(F.text)
 async def on_text(message: Message):
-    if not allowed(message.from_user.id) or message.text.startswith("/"):
+    if message.text.startswith("/"):
         return
     await ask(message, message.text)
 
 
 async def main():
-    global agent, main_loop
+    global main_loop
     main_loop = asyncio.get_running_loop()
-    agent = Agent(confirm=tg_confirm)
 
     await bot.set_my_commands([
         BotCommand(command="start", description="Приветствие и меню"),
         BotCommand(command="menu", description="Открыть меню заново"),
         BotCommand(command="about", description="Что такое Шелли"),
         BotCommand(command="install", description="Как установить на свой сервер"),
+        BotCommand(command="connect", description="Как подключить свой бот"),
         BotCommand(command="keys", description="Как получить ключ Gemini"),
         BotCommand(command="examples", description="Готовые задачи"),
         BotCommand(command="security", description="Как защищены секреты"),

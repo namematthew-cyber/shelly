@@ -1,6 +1,38 @@
 from types import SimpleNamespace
 
+from shelly.config import PUBLIC_SYSTEM_INSTRUCTION
 from shelly.agent import Agent, _is_unavailable, human_error
+
+
+def test_public_agent_has_no_tools():
+    public = Agent(public=True)
+    assert public.config.tools is None
+    assert public.config.system_instruction == PUBLIC_SYSTEM_INSTRUCTION
+
+    owner = Agent()
+    assert owner.config.tools is not None
+    assert owner.config.system_instruction != PUBLIC_SYSTEM_INSTRUCTION
+
+
+def test_public_agent_never_dispatches_tools(monkeypatch):
+    import shelly.agent as mod
+
+    called = []
+
+    def handler(**kwargs):
+        called.append(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(mod, "TOOL_MAP", {"run_command": SimpleNamespace(handler=handler)})
+
+    public = Agent(public=True)
+    result = public._dispatch("run_command", {"command": "uptime"})
+    assert called == []
+    assert "недоступны" in result["error"]
+
+    owner = Agent()
+    assert owner._dispatch("run_command", {"command": "uptime"}) == {"ok": True}
+    assert called == [{"command": "uptime"}]
 
 
 def test_unavailable_detection():

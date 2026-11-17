@@ -9,7 +9,8 @@ from google import genai
 from google.genai import types
 
 from .config import (
-    API_KEYS, HISTORY_LIMIT, LOG_PATH, MODELS, STEP_LIMIT, SYSTEM_INSTRUCTION,
+    API_KEYS, HISTORY_LIMIT, LOG_PATH, MODELS, PUBLIC_SYSTEM_INSTRUCTION,
+    STEP_LIMIT, SYSTEM_INSTRUCTION,
 )
 from .masking import mask
 from .tools import TOOLS, TOOL_MAP
@@ -20,6 +21,9 @@ _file_handler = logging.FileHandler(LOG_PATH, encoding="utf-8")
 _file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
 logger.addHandler(_file_handler)
 logger.propagate = False
+
+# Клиенты дорогие, а агентов теперь может быть по одному на пользователя.
+_CLIENTS = [genai.Client(api_key=k) for k in API_KEYS]
 
 
 class ModelUnavailable(Exception):
@@ -54,10 +58,11 @@ def human_error(exc):
 
 class Agent:
     def __init__(self, confirm=None, on_thinking_start=None, on_thinking_stop=None,
-                 on_tool=None, on_tool_done=None, on_retry=None):
+                 on_tool=None, on_tool_done=None, on_retry=None, public=False):
         if not API_KEYS:
             raise RuntimeError("Нет ключей Gemini в .env (GEMINI_API_KEYS)")
-        self.clients = [genai.Client(api_key=k) for k in API_KEYS]
+        self.clients = _CLIENTS
+        self.public = public
         self.key_index = 0
         self.history = []
         self.confirm = confirm
@@ -67,16 +72,18 @@ class Agent:
         self.on_tool_done = on_tool_done
         self.on_retry = on_retry
 
-        self.config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
-            tools=[types.Tool(function_declarations=[
+        options = {
+            "temperature": 0.3,
+            "system_instruction": PUBLIC_SYSTEM_INSTRUCTION if public else SYSTEM_INSTRUCTION,
+        }
+        if not public:
+            options["tools"] = [types.Tool(function_declarations=[
                 types.FunctionDeclaration(
                     name=t.name, description=t.description,
                     parameters=types.Schema(**t.parameters),
                 ) for t in TOOLS
-            ])],
-            temperature=0.3,
-        )
+            ])]
+        self.config = types.GenerateContentConfig(**options)
 
     def _request(self, stream=False, on_delta=None):
         """Перебирает модели и ключи; 503 внутри потока тоже считается ошибкой модели.
@@ -151,6 +158,10 @@ class Agent:
         logger.info("История урезана до %d сообщений", len(self.history))
 
     def _dispatch(self, name: str, args: dict) -> dict:
+        # Даже если модель «галлюцинирует» вызов инструмента без объявленных tools —
+        # в публичном режиме ничего не исполняем.
+        if self.public:
+            return {"error": "Инструменты недоступны: подключи свою установку"}
         tool = TOOL_MAP.get(name)
         if not tool:
             return {"error": f"Неизвестный инструмент: {name}"}

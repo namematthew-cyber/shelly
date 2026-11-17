@@ -5,8 +5,9 @@ import shelly.telegram_bot as tg
 
 
 class FakeMessage:
-    def __init__(self):
+    def __init__(self, user_id=1):
         self.chat = SimpleNamespace(id=1)
+        self.from_user = SimpleNamespace(id=user_id)
 
     async def answer(self, text):
         assert text == tg.THINK_PLAIN
@@ -143,7 +144,7 @@ def test_ask_rich_sends_only_final_answer(monkeypatch):
     monkeypatch.setattr(tg, "bot", fake)
     monkeypatch.setattr(tg, "MIN_COMMAND_SEC", 0)
 
-    async def fake_stream(prompt):
+    async def fake_stream(prompt, active_agent):
         return "финальный ответ"
 
     async def fake_send_rich(chat_id, text):
@@ -155,11 +156,44 @@ def test_ask_rich_sends_only_final_answer(monkeypatch):
     message = FakeMessage()
     view = tg.StreamView(message)
     asyncio.run(view.start())
-    asyncio.run(tg.ask_rich(message, "тест", view))
+    asyncio.run(tg.ask_rich(message, "тест", view, object()))
 
     assert fake.drafts[0]["rich_message"].html == tg.THINK_HTML
     assert fake.messages == []
     assert fake.rich == [(1, "финальный ответ")]
+
+
+def test_public_users_get_isolated_agents_without_commands(monkeypatch):
+    from collections import OrderedDict
+
+    created = []
+
+    class FakeAgent:
+        def __init__(self, confirm=None, public=False):
+            self.confirm = confirm
+            self.public = public
+            created.append(self)
+
+    monkeypatch.setattr(tg, "Agent", FakeAgent)
+    monkeypatch.setattr(tg, "ADMIN_ID", 42)
+    monkeypatch.setattr(tg, "_agents", OrderedDict())
+
+    owner = tg.get_agent(42)
+    user = tg.get_agent(99)
+    other = tg.get_agent(100)
+
+    assert owner.public is False
+    assert owner.confirm is tg.tg_confirm
+    assert user.public is True
+    assert user.confirm is None
+    assert other.public is True
+    assert tg.get_agent(99) is user  # история одного пользователя не теряется
+    assert user is not other
+    assert len(created) == 3
+
+    # Подтверждать команды может только владелец сервера.
+    assert tg.is_owner(42) is True
+    assert tg.is_owner(99) is False
 
 
 def test_status_indicators_order_and_execution():
@@ -186,7 +220,7 @@ def test_dynamic_messages_have_no_signature():
 
 
 def test_static_pages_cover_full_menu():
-    for page in ("menu", "about", "install", "keys", "help", "examples", "security", "clear"):
+    for page in ("menu", "about", "install", "connect", "keys", "help", "examples", "security", "clear"):
         assert page in tg.STATIC_PAGES
 
 
