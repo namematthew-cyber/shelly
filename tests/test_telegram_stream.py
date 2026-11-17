@@ -322,7 +322,7 @@ def test_static_pages_send_plain_html_with_keyboard(monkeypatch):
 
     sent = fake.messages[-1]
     assert sent["parse_mode"] == tg.ParseMode.HTML
-    assert "<b>" in sent["text"] and "tg-button" not in sent["text"]
+    assert "<pre><code>" in sent["text"] and "tg-button" not in sent["text"]
     assert sent["reply_markup"].inline_keyboard
     assert fake.rich == []
 

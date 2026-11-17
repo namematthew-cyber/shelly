@@ -61,10 +61,9 @@ def test_texts_are_plain_html_with_inline_buttons():
     for page in pages.values():
         assert "<h1>" not in page
         assert "tg-button" not in page
+        assert "<b>" not in page
+        assert "Шелли" not in page
         assert page.count("\n\n") <= 5
-    for name, page in pages.items():
-        if name != "menu":
-            assert "<b>" in page
 
     assert "<pre><code>" in pages["install"]
     assert "aistudio.google.com" in pages["keys"]
