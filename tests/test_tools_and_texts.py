@@ -67,16 +67,18 @@ def test_texts_are_plain_html_with_inline_buttons():
     assert "<pre><code>" in pages["install"]
     assert "aistudio.google.com" in pages["keys"]
 
-    for name in ("menu", "about", "help", "keys", "security"):
+    for name in ("menu", "connect"):
+        assert any(spec[0] == "create" for row in buttons[name] for spec in row)
+    for name in ("about", "help", "security", "clear"):
         assert any(
-            spec[0] == "nav" and spec[1] == "install"
+            spec[0] == "nav" and spec[1] == "menu"
             for row in buttons[name] for spec in row
         )
 
     assert any(spec[0] == "copy" for row in buttons["install"] for spec in row)
     assert any(spec[0] == "url" for row in buttons["keys"] for spec in row)
     assert any(spec[0] == "prompt" for row in buttons["examples"] for spec in row)
-    assert any(spec[:2] == ("nav", "menu") for row in buttons["about"] for spec in row)
+    assert sum(len(row) for row in buttons["menu"]) == 1
 
     for page in pages.values():
         assert "ID" not in page
@@ -87,7 +89,7 @@ def test_texts_are_plain_html_with_inline_buttons():
     assert "Шелли" in texts.WELCOME_PLAIN
 
 
-def test_static_pages_have_at_most_four_buttons_two_per_row():
+def test_static_pages_go_one_step_at_a_time():
     from shelly import texts
 
     pages = {
@@ -102,8 +104,8 @@ def test_static_pages_have_at_most_four_buttons_two_per_row():
         "clear": texts.CLEAR_BUTTONS,
     }
     for name, rows in pages.items():
-        assert all(len(row) <= 2 for row in rows), name
-        assert sum(len(row) for row in rows) <= 4, name
+        assert all(len(row) == 1 for row in rows), name
+        assert sum(len(row) for row in rows) <= 2, name
 
     # В приветствии нет кнопки «Закрыть» — только действия по установке.
     assert not any(

@@ -22,6 +22,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.methods import GetManagedBotToken
 from aiogram.types import (
     BotCommand,
     CallbackQuery,
@@ -29,6 +30,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputRichMessage,
+    ManagedBotUpdated,
     Message,
 )
 
@@ -49,6 +51,9 @@ bot = Bot(token=TG_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 main_loop = None
+_bot_username = None
+_manage_bots = False
+_managed = {}
 _agents = OrderedDict()
 _AGENT_LIMIT = 200
 _user_locks = {}
@@ -162,6 +167,16 @@ async def send_rich(chat_id, text):
             await bot.send_message(chat_id=str(chat_id), text=html.escape(mask(part)))
 
 
+def create_bot_url():
+    """Ссылка на создание своего бота через Bot Management Mode.
+
+    Если режим не включён, ведём в BotFather — пользователь создаст бота вручную.
+    """
+    if not _manage_bots or not _bot_username:
+        return "https://t.me/BotFather"
+    return f"https://t.me/newbot/{_bot_username}/ShellyAiBot?name=Shelly+AI"
+
+
 def _inline_keyboard(rows):
     buttons = []
     for row in rows:
@@ -175,6 +190,8 @@ def _inline_keyboard(rows):
                 ))
             elif kind == "url":
                 line.append(InlineKeyboardButton(text=label, url=value))
+            elif kind == "create":
+                line.append(InlineKeyboardButton(text=label, url=create_bot_url()))
             elif kind == "prompt":
                 line.append(InlineKeyboardButton(
                     text=label, switch_inline_query_current_chat=value,
@@ -435,6 +452,38 @@ async def on_confirm(callback: CallbackQuery):
     await callback.answer("Приняла." if answer == "yes" else "Отклонила.")
 
 
+async def handle_managed_bot(info):
+    """Пользователь создал бота по нашей ссылке — выдаём токен и следующий шаг."""
+    user = info.user
+    new_bot = info.bot_user
+    try:
+        token = await bot(GetManagedBotToken(user_id=new_bot.id))
+    except Exception as e:
+        logger.exception("Не удалось получить токен созданного бота: %s", e)
+        await bot.send_message(
+            chat_id=user.id,
+            text="Бот создан, но токен получить не вышло. Напиши /start и попробуй ещё раз.",
+        )
+        return
+
+    _managed[user.id] = {"username": new_bot.username, "token": token}
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text="Перейти в бота", url=f"https://t.me/{new_bot.username}",
+    )]])
+    await bot.send_message(
+        chat_id=user.id,
+        text=texts.bot_created_html(new_bot.username, token),
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard,
+        disable_web_page_preview=True,
+    )
+
+
+@dp.managed_bot()
+async def on_managed_bot(event: ManagedBotUpdated):
+    await handle_managed_bot(event)
+
+
 @dp.callback_query(F.data.startswith("nav:"))
 async def on_nav(callback: CallbackQuery):
     page = callback.data.split(":", 1)[1]
@@ -532,8 +581,18 @@ async def on_text(message: Message):
 
 
 async def main():
-    global main_loop
+    global main_loop, _bot_username, _manage_bots
     main_loop = asyncio.get_running_loop()
+
+    me = await bot.get_me()
+    _bot_username = me.username
+    _manage_bots = bool(getattr(me, "can_manage_bots", False))
+    if not _manage_bots:
+        logger.warning(
+            "Bot Management Mode выключен: включите его в BotFather (https://t.me/Botfather?startapp), "
+            "иначе ссылка создаст бота через BotFather без автоматического токена"
+        )
+    logger.info("Шелли в Telegram: @%s, статус в чате, итог через rich messages", me.username)
 
     await bot.set_my_commands([
         BotCommand(command="start", description="Приветствие и меню"),
@@ -548,11 +607,12 @@ async def main():
         BotCommand(command="help", description="Справка"),
     ])
 
-    me = await bot.get_me()
-    logger.info("Шелли в Telegram: @%s, статус в чате, итог через rich messages", me.username)
-
     try:
-        await dp.start_polling(bot)
+        # Явно просим managed_bot: без этого апдейт о созданном боте может не прийти.
+        await dp.start_polling(
+            bot,
+            allowed_updates=["message", "callback_query", "managed_bot"],
+        )
     finally:
         await bot.session.close()
 

@@ -1,6 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
+from aiogram.enums import ParseMode
+
 import shelly.telegram_bot as tg
 
 
@@ -161,6 +163,74 @@ def test_ask_rich_sends_only_final_answer(monkeypatch):
     assert fake.drafts[0]["rich_message"].html == tg.THINK_HTML
     assert fake.messages == []
     assert fake.rich == [(1, "финальный ответ")]
+
+
+def test_create_button_points_to_bot_management_link(monkeypatch):
+    from shelly import texts
+
+    monkeypatch.setattr(tg, "_bot_username", "shelly_ai")
+    monkeypatch.setattr(tg, "_manage_bots", True)
+    expected = "https://t.me/newbot/shelly_ai/ShellyAiBot?name=Shelly+AI"
+    assert tg.create_bot_url() == expected
+
+    keyboard = tg._inline_keyboard(texts.WELCOME_BUTTONS)
+    assert len(keyboard.inline_keyboard) == 1
+    assert len(keyboard.inline_keyboard[0]) == 1
+    assert keyboard.inline_keyboard[0][0].url == expected
+
+    # Без включённого режима — запасной вариант через BotFather.
+    monkeypatch.setattr(tg, "_manage_bots", False)
+    assert tg.create_bot_url() == "https://t.me/BotFather"
+
+
+def test_managed_bot_returns_token_and_next_step(monkeypatch):
+    class ManagedBot(FakeBot):
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        async def __call__(self, method):
+            self.calls.append(method)
+            return "123456:AA_token"
+
+    fake = ManagedBot()
+    monkeypatch.setattr(tg, "bot", fake)
+    monkeypatch.setattr(tg, "_managed", {})
+
+    info = SimpleNamespace(
+        user=SimpleNamespace(id=99),
+        bot_user=SimpleNamespace(id=12345, username="shelly_user_bot"),
+    )
+    asyncio.run(tg.handle_managed_bot(info))
+
+    assert [c.user_id for c in fake.calls] == [12345]
+    assert tg._managed[99] == {
+        "username": "shelly_user_bot", "token": "123456:AA_token",
+    }
+    sent = fake.messages[-1]
+    assert sent["chat_id"] == 99
+    assert sent["parse_mode"] == ParseMode.HTML
+    assert "@shelly_user_bot" in sent["text"]
+    assert "123456:AA_token" in sent["text"]
+    assert sent["reply_markup"].inline_keyboard[0][0].url == "https://t.me/shelly_user_bot"
+
+
+def test_managed_bot_update_is_dispatched(monkeypatch):
+    from aiogram.types import ManagedBotUpdated, Update, User
+
+    seen = []
+
+    async def fake_handle(info):
+        seen.append(info)
+
+    monkeypatch.setattr(tg, "handle_managed_bot", fake_handle)
+    user = User(id=99, is_bot=False, first_name="U")
+    bot_user = User(id=12345, is_bot=True, first_name="B", username="shelly_user_bot")
+    update = Update(update_id=1, managed_bot=ManagedBotUpdated(user=user, bot_user=bot_user))
+
+    asyncio.run(tg.dp.feed_update(tg.bot, update))
+    assert len(seen) == 1
+    assert seen[0].bot_user.username == "shelly_user_bot"
 
 
 def test_public_users_get_isolated_agents_without_commands(monkeypatch):
