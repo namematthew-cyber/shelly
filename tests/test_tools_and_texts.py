@@ -117,6 +117,7 @@ def test_static_pages_go_one_step_at_a_time():
     assert "ИИ-агент для вашего VPS" in texts.WELCOME_HTML
     assert "Управляйте своим сервером из Telegram" in texts.WELCOME_HTML
     assert "воспользуйтесь помощью Shelly в терминале" in texts.WELCOME_HTML
+    assert "подключены к серверу по SSH" in texts.WELCOME_HTML
     assert "Вместо десятков команд в голове" in texts.WELCOME_HTML
     assert "Чтобы подключить Shelly к своему серверу, создайте бота:" in texts.WELCOME_PLAIN
     assert "Приветствуем!" in texts.WELCOME_HTML
