@@ -116,8 +116,11 @@ def test_static_pages_go_one_step_at_a_time():
     assert "удалённо через Telegram-бота" in texts.WELCOME_HTML
     assert "прямо в терминале" in texts.WELCOME_HTML
     assert "Вместо десятков команд в голове" in texts.WELCOME_HTML
-    assert "Чтобы подключить Shelly к своему серверу, создайте бота:" in texts.WELCOME_HTML
-    assert "Привет" not in texts.WELCOME_HTML
+    assert "Чтобы подключить Shelly к своему серверу, создайте бота:" in texts.WELCOME_PLAIN
+    assert "Приветствуем!" in texts.WELCOME_HTML
+    assert "Привет 👋" not in texts.WELCOME_HTML
+    assert "Полностью бесплатно" in texts.WELCOME_HTML
+    assert texts.WELCOME_HTML.count("Shelly") == texts.WELCOME_HTML.count("<b>Shelly</b>")
     assert "Шаг 1" not in texts.WELCOME_HTML
     assert "Шелли" not in texts.WELCOME_HTML
 
