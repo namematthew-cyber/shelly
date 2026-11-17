@@ -56,7 +56,7 @@ CONFIRM_TIMEOUT = int(setting("SHELLY_CONFIRM_TIMEOUT", "180"))
 # (rich-draft живёт всего ~30 секунд)
 LONG_REQUEST_AFTER = int(setting("SHELLY_LONG_REQUEST_AFTER", "20"))
 # Адрес репозитория/сайта — подставляется в справку бота
-PROJECT_URL = setting("SHELLY_PROJECT_URL")
+PROJECT_URL = setting("SHELLY_PROJECT_URL", "https://github.com/namematthew-cyber/shelly")
 
 # Премиум-эмодзи для анимации размышления. Можно заменить своим.
 THINK_EMOJI_ID = setting("SHELLY_THINK_EMOJI", "5427181942934088912")

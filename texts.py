@@ -6,7 +6,7 @@ import re
 from .config import PROJECT_URL, USER_NAME
 
 _NAME = html.escape(USER_NAME)
-_REPO_RAW = PROJECT_URL or "<ссылка на репозиторий>"
+_REPO_RAW = PROJECT_URL or "https://github.com/namematthew-cyber/shelly"
 _REPO_TEXT = html.escape(_REPO_RAW)
 _KEYS_URL = "https://aistudio.google.com/app/apikey"
 

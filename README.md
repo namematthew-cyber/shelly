@@ -26,7 +26,7 @@ AI-агент для вашего VPS. Работает в терминале п
 ## Установка
 
 ```bash
-git clone <этот-репозиторий> shelly
+git clone https://github.com/namematthew-cyber/shelly.git shelly
 cd shelly
 python3 -m venv .venv
 . .venv/bin/activate
