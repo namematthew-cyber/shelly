@@ -53,7 +53,8 @@ def human_error(exc):
 
 
 class Agent:
-    def __init__(self, confirm=None, on_thinking_start=None, on_thinking_stop=None, on_tool=None):
+    def __init__(self, confirm=None, on_thinking_start=None, on_thinking_stop=None,
+                 on_tool=None, on_tool_done=None):
         if not API_KEYS:
             raise RuntimeError("Нет ключей Gemini в .env (GEMINI_API_KEYS)")
         self.clients = [genai.Client(api_key=k) for k in API_KEYS]
@@ -63,6 +64,7 @@ class Agent:
         self.on_thinking_start = on_thinking_start
         self.on_thinking_stop = on_thinking_stop
         self.on_tool = on_tool
+        self.on_tool_done = on_tool_done
 
         self.config = types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION,
@@ -204,7 +206,11 @@ class Agent:
                 args = dict(fc.args or {})
                 if self.on_tool:
                     self.on_tool(fc.name, args)
-                result = self._dispatch(fc.name, args)
+                try:
+                    result = self._dispatch(fc.name, args)
+                finally:
+                    if self.on_tool_done:
+                        self.on_tool_done(fc.name, args)
                 responses.append(types.Part(function_response=types.FunctionResponse(
                     name=fc.name, response=result,
                 )))

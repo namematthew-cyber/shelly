@@ -33,6 +33,28 @@ class FakeBot:
         self.deleted.append(kwargs)
 
 
+def test_stream_view_switches_between_thinking_and_executing(monkeypatch):
+    fake = FakeBot()
+    monkeypatch.setattr(tg, "bot", fake)
+
+    message = FakeMessage()
+    view = tg.StreamView(message, 321)
+    view.fallback = SimpleNamespace(message_id=7, chat=message.chat)
+
+    asyncio.run(view._push_status(view.fallback))
+    assert fake.drafts[-1]["rich_message"].html == tg.THINK_HTML
+    assert fake.edits[-1]["text"] == tg.THINK_PLAIN
+
+    view.executing = "echo ok"
+    asyncio.run(view._push_status(view.fallback))
+    assert "Выполняю: echo ok" in fake.drafts[-1]["rich_message"].html
+    assert fake.edits[-1]["text"] == tg.exec_plain("echo ok")
+
+    view.executing = None
+    asyncio.run(view._push_status(view.fallback))
+    assert fake.drafts[-1]["rich_message"].html == tg.THINK_HTML
+
+
 def test_long_request_uses_editable_keepalive(monkeypatch):
     fake = FakeBot()
     monkeypatch.setattr(tg, "bot", fake)
@@ -55,6 +77,18 @@ def test_long_request_uses_editable_keepalive(monkeypatch):
     assert len(fake.edits) == 1
     assert fake.deleted[0]["message_id"] == 7
     assert fake.rich == [(1, "финальный ответ")]
+
+
+def test_status_indicators_order_and_execution():
+    assert tg.THINK_HTML.startswith("<tg-thinking><tg-emoji")
+    assert " Шелли думает</tg-thinking>" in tg.THINK_HTML
+    assert tg.THINK_PLAIN.startswith("💬 Шелли думает")
+
+    executing = tg.exec_html("rm -rf /tmp/old")
+    assert "Выполняю: rm -rf /tmp/old" in executing
+    assert "<tg-thinking><tg-emoji" in executing
+    assert "Шелли думает" not in executing
+    assert tg.exec_plain("echo ok") == "💬 Выполняю: echo ok"
 
 
 def test_dynamic_messages_have_no_signature():
