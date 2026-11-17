@@ -1,4 +1,6 @@
 .env
+.bot_names.json
+.bot_names.json.tmp
 *.log
 __pycache__/
 *.py[cod]

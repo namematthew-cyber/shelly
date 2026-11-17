@@ -165,22 +165,35 @@ def test_ask_rich_sends_only_final_answer(monkeypatch):
     assert fake.rich == [(1, "финальный ответ")]
 
 
-def test_create_button_points_to_bot_management_link(monkeypatch):
+def test_create_button_points_to_bot_management_link(monkeypatch, tmp_path):
+    import re
+
     from shelly import texts
 
     monkeypatch.setattr(tg, "_bot_username", "shelly_ai")
     monkeypatch.setattr(tg, "_manage_bots", True)
-    expected = "https://t.me/newbot/shelly_ai/ShellyAiBot?name=Shelly+AI"
-    assert tg.create_bot_url() == expected
+    monkeypatch.setattr(tg, "BOT_NAMES_PATH", tmp_path / "names.json")
+    monkeypatch.setattr(tg, "_bot_names", {"users": {}, "used": []})
 
-    keyboard = tg._inline_keyboard(texts.WELCOME_BUTTONS)
+    url = tg.create_bot_url(42)
+    name = url.split("/")[-1].split("?")[0]
+    assert url.startswith("https://t.me/newbot/shelly_ai/")
+    assert url.endswith("?name=Shelly+AI")
+    assert re.fullmatch(r"shelly_ai_\d{16}_bot", name)
+    assert len(name) <= 32
+
+    keyboard = tg._inline_keyboard(texts.WELCOME_BUTTONS, 42)
     assert len(keyboard.inline_keyboard) == 1
     assert len(keyboard.inline_keyboard[0]) == 1
-    assert keyboard.inline_keyboard[0][0].url == expected
+    assert keyboard.inline_keyboard[0][0].url == url
+
+    # Имя одного и того же пользователя стабильно, разные пользователи не коллидируют.
+    assert tg.create_bot_url(42) == url
+    assert tg.create_bot_url(43) != url
 
     # Без включённого режима — запасной вариант через BotFather.
     monkeypatch.setattr(tg, "_manage_bots", False)
-    assert tg.create_bot_url() == "https://t.me/BotFather"
+    assert tg.create_bot_url(42) == "https://t.me/BotFather"
 
 
 def test_managed_bot_returns_token_and_next_step(monkeypatch):
@@ -310,7 +323,7 @@ def test_static_pages_send_plain_html_with_keyboard(monkeypatch):
 def test_start_sends_only_welcome(monkeypatch):
     calls = []
 
-    async def fake_send(chat_id, page):
+    async def fake_send(chat_id, page, user_id=None):
         calls.append(page)
 
     async def fake_ask(message, prompt):

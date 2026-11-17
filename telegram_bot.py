@@ -10,10 +10,14 @@
 
 import asyncio
 import html
+import json
 import logging
+import os
 from collections import OrderedDict
+from pathlib import Path
 import random
 import re
+import secrets
 import threading
 import time
 import uuid
@@ -63,6 +67,56 @@ MAX_MESSAGE = 4096
 RICH_LIMIT = 30000
 # Команда должна быть видна не «долю секунды», а хотя бы столько.
 MIN_COMMAND_SEC = 1.5
+
+# Предложенные имена для ботов пользователей: храним, чтобы не повторить имя
+# даже после перезапуска сервиса.
+BOT_NAMES_PATH = Path(__file__).with_name(".bot_names.json")
+_names_lock = threading.Lock()
+_bot_names = {"users": {}, "used": []}
+
+
+def _load_bot_names():
+    try:
+        data = json.loads(BOT_NAMES_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("users"), dict):
+            _bot_names["users"] = {str(k): v for k, v in data["users"].items()}
+            _bot_names["used"] = list(data.get("used") or [])
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning("Не прочитал реестр имён ботов: %s", e)
+
+
+def _save_bot_names():
+    BOT_NAMES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = BOT_NAMES_PATH.with_name(BOT_NAMES_PATH.name + ".tmp")
+    tmp.write_text(json.dumps(_bot_names, ensure_ascii=False), encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, BOT_NAMES_PATH)
+
+
+def suggested_bot_username(user_id=None) -> str:
+    """Имя вида shelly_ai_<цифры>_bot, уникальное в пределах установки."""
+    key = str(user_id) if user_id is not None else "anon"
+    with _names_lock:
+        if not _bot_names["users"] and not _bot_names["used"]:
+            _load_bot_names()
+        existing = _bot_names["users"].get(key)
+        if existing:
+            return existing
+        used = set(_bot_names["used"])
+        while True:
+            digits = f"{int(time.time())}{secrets.randbelow(1_000_000):06d}"
+            name = f"shelly_ai_{digits}_bot"
+            if len(name) <= 32 and name not in used:
+                break
+        _bot_names["users"][key] = name
+        _bot_names["used"].append(name)
+        _save_bot_names()
+        return name
+
+
+_load_bot_names()
 
 _CUSTOM_EMOJI = f'<tg-emoji emoji-id="{THINK_EMOJI_ID}">{html.escape(THINK_EMOJI_CHAR)}</tg-emoji>'
 # Никаких своих точек: только эмодзи и надпись, анимацию рисует сам Telegram.
@@ -167,17 +221,18 @@ async def send_rich(chat_id, text):
             await bot.send_message(chat_id=str(chat_id), text=html.escape(mask(part)))
 
 
-def create_bot_url():
+def create_bot_url(user_id=None):
     """Ссылка на создание своего бота через Bot Management Mode.
 
     Если режим не включён, ведём в BotFather — пользователь создаст бота вручную.
     """
     if not _manage_bots or not _bot_username:
         return "https://t.me/BotFather"
-    return f"https://t.me/newbot/{_bot_username}/ShellyAiBot?name=Shelly+AI"
+    name = suggested_bot_username(user_id)
+    return f"https://t.me/newbot/{_bot_username}/{name}?name=Shelly+AI"
 
 
-def _inline_keyboard(rows):
+def _inline_keyboard(rows, user_id=None):
     buttons = []
     for row in rows:
         line = []
@@ -191,7 +246,7 @@ def _inline_keyboard(rows):
             elif kind == "url":
                 line.append(InlineKeyboardButton(text=label, url=value))
             elif kind == "create":
-                line.append(InlineKeyboardButton(text=label, url=create_bot_url()))
+                line.append(InlineKeyboardButton(text=label, url=create_bot_url(user_id)))
             elif kind == "prompt":
                 line.append(InlineKeyboardButton(
                     text=label, switch_inline_query_current_chat=value,
@@ -215,10 +270,10 @@ STATIC_PAGES = {
 }
 
 
-async def send_page(chat_id, page):
+async def send_page(chat_id, page, user_id=None):
     """Статические страницы — обычные сообщения с HTML и inline-кнопками."""
     markup, plain, rows = STATIC_PAGES[page]
-    keyboard = _inline_keyboard(rows)
+    keyboard = _inline_keyboard(rows, user_id)
     try:
         return await bot.send_message(
             chat_id=chat_id,
@@ -506,7 +561,7 @@ async def on_nav(callback: CallbackQuery):
         return
 
     await callback.answer()
-    await send_page(callback.message.chat.id, page)
+    await send_page(callback.message.chat.id, page, callback.from_user.id)
 
     # Навигация не должна засорять чат: старая страница уезжает.
     if callback.message:
@@ -522,42 +577,42 @@ async def on_nav(callback: CallbackQuery):
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     # Только приветствие: агент запускается по первой реальной задаче.
-    await send_page(message.chat.id, "menu")
+    await send_page(message.chat.id, "menu", message.from_user.id)
 
 
 @dp.message(Command("menu"))
 async def cmd_menu(message: Message):
-    await send_page(message.chat.id, "menu")
+    await send_page(message.chat.id, "menu", message.from_user.id)
 
 
 @dp.message(Command("about"))
 async def cmd_about(message: Message):
-    await send_page(message.chat.id, "about")
+    await send_page(message.chat.id, "about", message.from_user.id)
 
 
 @dp.message(Command("install"))
 async def cmd_install(message: Message):
-    await send_page(message.chat.id, "install")
+    await send_page(message.chat.id, "install", message.from_user.id)
 
 
 @dp.message(Command("connect"))
 async def cmd_connect(message: Message):
-    await send_page(message.chat.id, "connect")
+    await send_page(message.chat.id, "connect", message.from_user.id)
 
 
 @dp.message(Command("keys"))
 async def cmd_keys(message: Message):
-    await send_page(message.chat.id, "keys")
+    await send_page(message.chat.id, "keys", message.from_user.id)
 
 
 @dp.message(Command("examples"))
 async def cmd_examples(message: Message):
-    await send_page(message.chat.id, "examples")
+    await send_page(message.chat.id, "examples", message.from_user.id)
 
 
 @dp.message(Command("security"))
 async def cmd_security(message: Message):
-    await send_page(message.chat.id, "security")
+    await send_page(message.chat.id, "security", message.from_user.id)
 
 
 @dp.message(Command("clear"))
@@ -565,12 +620,12 @@ async def cmd_clear(message: Message):
     user_id = message.from_user.id
     async with user_lock(user_id):
         _agents.pop(user_id, None)
-    await send_page(message.chat.id, "clear")
+    await send_page(message.chat.id, "clear", message.from_user.id)
 
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
-    await send_page(message.chat.id, "help")
+    await send_page(message.chat.id, "help", message.from_user.id)
 
 
 @dp.message(F.text)
