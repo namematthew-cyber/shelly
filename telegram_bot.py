@@ -138,7 +138,7 @@ def exec_html(command):
 
 
 def retry_html(model):
-    return f"<tg-thinking>{_CUSTOM_EMOJI} Проверяю модель {html.escape(str(model))}…</tg-thinking>"
+    return f"<tg-thinking>{_CUSTOM_EMOJI} Модель {html.escape(str(model))} перегружена — пробую ещё…</tg-thinking>"
 
 
 def exec_plain(command):
@@ -150,7 +150,7 @@ def status_html(command=None, retry_model=None):
     if command:
         return f"{_CUSTOM_EMOJI} Выполняю: {html.escape(_short_command(command))}"
     if retry_model:
-        return f"{_CUSTOM_EMOJI} Проверяю модель {html.escape(str(retry_model))}…"
+        return f"{_CUSTOM_EMOJI} Модель {html.escape(str(retry_model))} перегружена — пробую ещё…"
     return f"{_CUSTOM_EMOJI} Шелли думает"
 
 

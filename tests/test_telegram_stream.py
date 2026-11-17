@@ -89,7 +89,7 @@ def test_all_events_use_the_same_animated_draft(monkeypatch):
     assert fake.messages == []
 
     asyncio.run(view._push_draft(tg.retry_html("gemini-3.1-flash-lite")))
-    assert "Проверяю модель gemini-3.1-flash-lite" in fake.drafts[-1]["rich_message"].html
+    assert "Модель gemini-3.1-flash-lite перегружена" in fake.drafts[-1]["rich_message"].html
     assert all(d["draft_id"] == view.draft_id for d in fake.drafts)
 
 
@@ -306,7 +306,7 @@ def test_status_indicators_order_and_execution():
 
     retry = tg.retry_html("gemini-3.1-flash-lite")
     assert retry.startswith("<tg-thinking><tg-emoji")
-    assert "Проверяю модель gemini-3.1-flash-lite" in retry
+    assert "Модель gemini-3.1-flash-lite перегружена" in retry
 
 
 def test_dynamic_messages_have_no_signature():
