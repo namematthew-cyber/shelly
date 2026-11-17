@@ -68,27 +68,21 @@ def test_fallback_without_drafts_uses_single_status_message(monkeypatch):
     assert fake.messages[0]["text"] == tg.status_html()
 
 
-def test_events_reuse_one_message_and_leave_command_visible(monkeypatch):
+def test_all_events_use_the_same_animated_draft(monkeypatch):
     fake = FakeBot()
     monkeypatch.setattr(tg, "bot", fake)
 
     view = tg.StreamView(FakeMessage())
     asyncio.run(view.start())
+    assert fake.drafts[-1]["rich_message"].html == tg.THINK_HTML
 
-    asyncio.run(view._push_status(tg.status_html(command="echo ok")))
-    assert len(fake.messages) == 1
-    assert fake.messages[-1]["text"] == tg.status_html(command="echo ok")
-    assert "tg-emoji" in fake.messages[-1]["text"]
+    asyncio.run(view._push_draft(tg.exec_html("echo ok")))
+    assert "Выполняю: echo ok" in fake.drafts[-1]["rich_message"].html
+    assert fake.messages == []
 
-    asyncio.run(view._push_status(tg.status_html(retry_model="gemini-3.1-flash-lite")))
-    assert len(fake.messages) == 1
-    assert "Проверяю модель gemini-3.1-flash-lite" in fake.edits[-1]["text"]
-
-    view.set_done()
-    assert "Проверяю модель" in fake.edits[-1]["text"]
-
-    asyncio.run(view.close())
-    assert fake.deleted[-1]["message_id"] == 99
+    asyncio.run(view._push_draft(tg.retry_html("gemini-3.1-flash-lite")))
+    assert "Проверяю модель gemini-3.1-flash-lite" in fake.drafts[-1]["rich_message"].html
+    assert all(d["draft_id"] == view.draft_id for d in fake.drafts)
 
 
 def test_callbacks_push_status_synchronously(monkeypatch):
@@ -103,8 +97,8 @@ def test_callbacks_push_status_synchronously(monkeypatch):
     view.set_retry("gemini-3.1-flash-lite")
 
     assert pushed == [
-        tg.status_html(command="ls -la"),
-        tg.status_html(retry_model="gemini-3.1-flash-lite"),
+        tg.exec_html("ls -la"),
+        tg.retry_html("gemini-3.1-flash-lite"),
     ]
 
 
@@ -141,6 +135,10 @@ def test_status_indicators_order_and_execution():
     assert "<tg-thinking><tg-emoji" in executing
     assert "Шелли думает" not in executing
     assert tg.exec_plain("echo ok") == "💬 Выполняю: echo ok"
+
+    retry = tg.retry_html("gemini-3.1-flash-lite")
+    assert retry.startswith("<tg-thinking><tg-emoji")
+    assert "Проверяю модель gemini-3.1-flash-lite" in retry
 
 
 def test_dynamic_messages_have_no_signature():

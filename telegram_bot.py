@@ -68,6 +68,10 @@ def exec_html(command):
     return f"<tg-thinking>{_CUSTOM_EMOJI} Выполняю: {html.escape(_short_command(command))}</tg-thinking>"
 
 
+def retry_html(model):
+    return f"<tg-thinking>{_CUSTOM_EMOJI} Проверяю модель {html.escape(str(model))}…</tg-thinking>"
+
+
 def exec_plain(command):
     return f"{THINK_EMOJI_CHAR} Выполняю: {_short_command(command)}"
 
@@ -188,7 +192,7 @@ async def send_page(chat_id, page):
 
 
 class StreamView:
-    """Один запрос: анимированный «думает» + одно сообщение для команд и ретраев."""
+    """Один запрос: все статусы идут в один анимированный rich-черновик."""
 
     def __init__(self, message):
         self.message = message
@@ -196,13 +200,13 @@ class StreamView:
         self.draft_id = random.randint(1, 2_147_483_647)
         self.use_rich = True
         self.status_message = None
-        self.status_lock = asyncio.Lock()
 
-    def _push_sync(self, text):
+    def _push_sync(self, markup):
         """Доставляем статус до запуска команды: быстрая команда не должна его перегнать."""
         if main_loop is None:
             return
-        future = asyncio.run_coroutine_threadsafe(self._push_status(text), main_loop)
+        coro = self._push_draft(markup) if self.use_rich else self._push_plain(markup)
+        future = asyncio.run_coroutine_threadsafe(coro, main_loop)
         try:
             future.result(timeout=5)
         except Exception as e:
@@ -210,47 +214,50 @@ class StreamView:
 
     async def start(self):
         try:
-            await bot.send_rich_message_draft(
-                chat_id=self.chat_id,
-                draft_id=self.draft_id,
-                rich_message=InputRichMessage(html=THINK_HTML),
-            )
+            await self._push_draft(THINK_HTML)
         except Exception as e:
             self.use_rich = False
-            logger.info("Анимированный черновик недоступен, шлю обычный статус: %s", e)
-            await self._push_status(status_html())
+            logger.info("Rich-черновик недоступен, шлю обычный статус: %s", e)
+            await self._push_plain(status_html())
 
     def set_executing(self, name, args):
         command = _short_command((args or {}).get("command", ""))
-        self._push_sync(status_html(command=command))
+        self._push_sync(exec_html(command) if self.use_rich else status_html(command=command))
 
     def set_done(self, name=None, args=None):
-        # «Думает» уже крутится в черновике, а команда пусть остаётся видимой —
-        # возврат к Thinking в обычном сообщении давал два одинаковых статуса.
-        return None
+        # Возврат к «думает» в том же черновике тоже анимирован.
+        if self.use_rich:
+            self._push_sync(THINK_HTML)
 
     def set_retry(self, model):
-        self._push_sync(status_html(retry_model=model))
+        self._push_sync(retry_html(model) if self.use_rich else status_html(retry_model=model))
 
-    async def _push_status(self, text):
-        async with self.status_lock:
-            try:
-                if self.status_message is None:
-                    self.status_message = await bot.send_message(
-                        chat_id=self.chat_id,
-                        text=text,
-                        parse_mode=ParseMode.HTML,
-                        disable_notification=True,
-                    )
-                else:
-                    await bot.edit_message_text(
-                        text=text,
-                        chat_id=str(self.chat_id),
-                        message_id=self.status_message.message_id,
-                        parse_mode=ParseMode.HTML,
-                    )
-            except Exception as e:
-                logger.debug("Статус не обновлён: %s", e)
+    async def _push_draft(self, markup):
+        # Один draft_id = Telegram анимирует переход между статусами.
+        await bot.send_rich_message_draft(
+            chat_id=self.chat_id,
+            draft_id=self.draft_id,
+            rich_message=InputRichMessage(html=markup),
+        )
+
+    async def _push_plain(self, text):
+        try:
+            if self.status_message is None:
+                self.status_message = await bot.send_message(
+                    chat_id=self.chat_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    disable_notification=True,
+                )
+            else:
+                await bot.edit_message_text(
+                    text=text,
+                    chat_id=str(self.chat_id),
+                    message_id=self.status_message.message_id,
+                    parse_mode=ParseMode.HTML,
+                )
+        except Exception as e:
+            logger.debug("Статус не обновлён: %s", e)
 
     async def close(self):
         if self.status_message is None:
