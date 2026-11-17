@@ -31,6 +31,7 @@ from aiogram.types import (
     BotCommand,
     CallbackQuery,
     CopyTextButton,
+    FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputRichMessage,
@@ -257,6 +258,8 @@ def _inline_keyboard(rows, user_id=None):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+WELCOME_IMAGE = Path(__file__).with_name("assets") / "welcome.png"
+
 STATIC_PAGES = {
     "menu": (texts.WELCOME_HTML, texts.WELCOME_PLAIN, texts.WELCOME_BUTTONS),
     "about": (texts.ABOUT_HTML, texts.ABOUT_PLAIN, texts.ABOUT_BUTTONS),
@@ -274,6 +277,20 @@ async def send_page(chat_id, page, user_id=None):
     """Статические страницы — обычные сообщения с HTML и inline-кнопками."""
     markup, plain, rows = STATIC_PAGES[page]
     keyboard = _inline_keyboard(rows, user_id)
+
+    # Первое сообщение — с инфографикой; текст уходит в подпись к фото.
+    if page == "menu" and WELCOME_IMAGE.is_file():
+        try:
+            return await bot.send_photo(
+                chat_id=chat_id,
+                photo=FSInputFile(WELCOME_IMAGE),
+                caption=markup,
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard,
+            )
+        except Exception as e:
+            logger.exception("Не удалось отправить картинку приветствия: %s", e)
+
     try:
         return await bot.send_message(
             chat_id=chat_id,

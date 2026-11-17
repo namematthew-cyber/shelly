@@ -23,6 +23,11 @@ class FakeBot:
         self.deleted = []
         self.rich = []
         self.messages = []
+        self.photos = []
+
+    async def send_photo(self, **kwargs):
+        self.photos.append(kwargs)
+        return SimpleNamespace(message_id=98, chat=kwargs["chat_id"])
 
     async def send_rich_message_draft(self, **kwargs):
         self.drafts.append(kwargs)
@@ -318,6 +323,32 @@ def test_static_pages_send_plain_html_with_keyboard(monkeypatch):
     assert "<b>" in sent["text"] and "tg-button" not in sent["text"]
     assert sent["reply_markup"].inline_keyboard
     assert fake.rich == []
+
+
+def test_welcome_page_sends_image_with_caption_and_one_button(monkeypatch, tmp_path):
+    from shelly import texts
+
+    fake = FakeBot()
+    monkeypatch.setattr(tg, "bot", fake)
+    monkeypatch.setattr(tg, "_bot_username", "shelly_ai")
+    monkeypatch.setattr(tg, "_manage_bots", True)
+    image = tmp_path / "welcome.png"
+    image.write_bytes(b"png")
+    monkeypatch.setattr(tg, "WELCOME_IMAGE", image)
+
+    asyncio.run(tg.send_page(1, "menu", 42))
+
+    assert len(fake.photos) == 1
+    sent = fake.photos[0]
+    assert sent["chat_id"] == 1
+    assert sent["caption"] == texts.WELCOME_HTML
+    assert sent["parse_mode"] == ParseMode.HTML
+    assert "disable_web_page_preview" not in sent
+    keyboard = sent["reply_markup"].inline_keyboard
+    assert len(keyboard) == 1
+    assert len(keyboard[0]) == 1
+    assert "newbot" in keyboard[0][0].url
+    assert fake.messages == []
 
 
 def test_start_sends_only_welcome(monkeypatch):
