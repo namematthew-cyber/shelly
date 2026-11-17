@@ -38,25 +38,74 @@ class FakeBot:
         self.deleted.append(kwargs)
 
 
-def test_status_sequence_uses_one_message(monkeypatch):
+def test_thinking_is_animated_draft_without_duplicate_message(monkeypatch):
     fake = FakeBot()
     monkeypatch.setattr(tg, "bot", fake)
 
     view = tg.StreamView(FakeMessage())
     asyncio.run(view.start())
+
+    assert len(fake.drafts) == 1
+    assert fake.drafts[0]["rich_message"].html == tg.THINK_HTML
+    assert fake.messages == []
+    assert view.use_rich is True
+
+
+def test_fallback_without_drafts_uses_single_status_message(monkeypatch):
+    fake = FakeBot()
+
+    async def no_draft(**kwargs):
+        raise RuntimeError("drafts disabled")
+
+    fake.send_rich_message_draft = no_draft
+    monkeypatch.setattr(tg, "bot", fake)
+
+    view = tg.StreamView(FakeMessage())
+    asyncio.run(view.start())
+
+    assert view.use_rich is False
     assert len(fake.messages) == 1
-    assert fake.messages[-1]["text"] == tg.status_html()
+    assert fake.messages[0]["text"] == tg.status_html()
+
+
+def test_events_reuse_one_message_and_leave_command_visible(monkeypatch):
+    fake = FakeBot()
+    monkeypatch.setattr(tg, "bot", fake)
+
+    view = tg.StreamView(FakeMessage())
+    asyncio.run(view.start())
 
     asyncio.run(view._push_status(tg.status_html(command="echo ok")))
     assert len(fake.messages) == 1
-    assert fake.edits[-1]["text"] == tg.status_html(command="echo ok")
-    assert "tg-emoji" in fake.edits[-1]["text"]
+    assert fake.messages[-1]["text"] == tg.status_html(command="echo ok")
+    assert "tg-emoji" in fake.messages[-1]["text"]
 
     asyncio.run(view._push_status(tg.status_html(retry_model="gemini-3.1-flash-lite")))
+    assert len(fake.messages) == 1
     assert "Проверяю модель gemini-3.1-flash-lite" in fake.edits[-1]["text"]
+
+    view.set_done()
+    assert "Проверяю модель" in fake.edits[-1]["text"]
 
     asyncio.run(view.close())
     assert fake.deleted[-1]["message_id"] == 99
+
+
+def test_callbacks_push_status_synchronously(monkeypatch):
+    fake = FakeBot()
+    monkeypatch.setattr(tg, "bot", fake)
+
+    pushed = []
+    view = tg.StreamView(FakeMessage())
+    view._push_sync = pushed.append
+
+    view.set_executing("run_command", {"command": "ls -la"})
+    view.set_retry("gemini-3.1-flash-lite")
+
+    assert pushed == [
+        tg.status_html(command="ls -la"),
+        tg.status_html(retry_model="gemini-3.1-flash-lite"),
+    ]
 
 
 def test_ask_rich_sends_only_final_answer(monkeypatch):
@@ -77,8 +126,8 @@ def test_ask_rich_sends_only_final_answer(monkeypatch):
     asyncio.run(view.start())
     asyncio.run(tg.ask_rich(message, "тест", view))
 
-    assert len(fake.messages) == 1
-    assert fake.deleted[0]["message_id"] == 99
+    assert fake.drafts[0]["rich_message"].html == tg.THINK_HTML
+    assert fake.messages == []
     assert fake.rich == [(1, "финальный ответ")]
 
 

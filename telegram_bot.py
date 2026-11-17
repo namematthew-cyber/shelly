@@ -3,12 +3,14 @@
 
 Доступ настраивается через SHELLY_ADMIN_ID.
 Опасные команды подтверждаются inline-кнопками Да/Нет.
-Ответы стримятся через sendRichMessageDraft и закрепляются sendRichMessage.
+Анимированный черновик показывает «Шелли думает», команды и ретраи идут отдельным
+редактируемым статусом, а в чат уходит только итоговый rich-ответ.
 """
 
 import asyncio
 import html
 import logging
+import random
 import re
 import threading
 import uuid
@@ -186,31 +188,49 @@ async def send_page(chat_id, page):
 
 
 class StreamView:
-    """Один запрос: одно редактируемое сообщение со статусом работы."""
+    """Один запрос: анимированный «думает» + одно сообщение для команд и ретраев."""
 
     def __init__(self, message):
         self.message = message
         self.chat_id = message.chat.id
+        self.draft_id = random.randint(1, 2_147_483_647)
+        self.use_rich = True
         self.status_message = None
         self.status_lock = asyncio.Lock()
 
-    @staticmethod
-    def _schedule(coro):
-        if main_loop is not None:
-            asyncio.run_coroutine_threadsafe(coro, main_loop)
+    def _push_sync(self, text):
+        """Доставляем статус до запуска команды: быстрая команда не должна его перегнать."""
+        if main_loop is None:
+            return
+        future = asyncio.run_coroutine_threadsafe(self._push_status(text), main_loop)
+        try:
+            future.result(timeout=5)
+        except Exception as e:
+            logger.debug("Статус не доставлен: %s", e)
 
     async def start(self):
-        await self._push_status(status_html())
+        try:
+            await bot.send_rich_message_draft(
+                chat_id=self.chat_id,
+                draft_id=self.draft_id,
+                rich_message=InputRichMessage(html=THINK_HTML),
+            )
+        except Exception as e:
+            self.use_rich = False
+            logger.info("Анимированный черновик недоступен, шлю обычный статус: %s", e)
+            await self._push_status(status_html())
 
     def set_executing(self, name, args):
-        text = status_html(command=_short_command((args or {}).get("command", "")))
-        self._schedule(self._push_status(text))
+        command = _short_command((args or {}).get("command", ""))
+        self._push_sync(status_html(command=command))
 
     def set_done(self, name=None, args=None):
-        self._schedule(self._push_status(status_html()))
+        # «Думает» уже крутится в черновике, а команда пусть остаётся видимой —
+        # возврат к Thinking в обычном сообщении давал два одинаковых статуса.
+        return None
 
     def set_retry(self, model):
-        self._schedule(self._push_status(status_html(retry_model=model)))
+        self._push_sync(status_html(retry_model=model))
 
     async def _push_status(self, text):
         async with self.status_lock:
