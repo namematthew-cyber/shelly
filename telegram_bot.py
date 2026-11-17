@@ -13,6 +13,7 @@ import logging
 import random
 import re
 import threading
+import time
 import uuid
 
 from aiogram import Bot, Dispatcher, F
@@ -52,6 +53,8 @@ _pending = {}
 _pending_lock = threading.Lock()
 MAX_MESSAGE = 4096
 RICH_LIMIT = 30000
+# Команда должна быть видна не «долю секунды», а хотя бы столько.
+MIN_COMMAND_SEC = 1.5
 
 _CUSTOM_EMOJI = f'<tg-emoji emoji-id="{THINK_EMOJI_ID}">{html.escape(THINK_EMOJI_CHAR)}</tg-emoji>'
 # Никаких своих точек: только эмодзи и надпись, анимацию рисует сам Telegram.
@@ -200,6 +203,7 @@ class StreamView:
         self.draft_id = random.randint(1, 2_147_483_647)
         self.use_rich = True
         self.status_message = None
+        self.last_command_at = None
 
     def _push_sync(self, markup):
         """Доставляем статус до запуска команды: быстрая команда не должна его перегнать."""
@@ -220,17 +224,28 @@ class StreamView:
             logger.info("Rich-черновик недоступен, шлю обычный статус: %s", e)
             await self._push_plain(status_html())
 
+    def _command_left(self):
+        if self.last_command_at is None:
+            return 0.0
+        return max(0.0, MIN_COMMAND_SEC - (time.monotonic() - self.last_command_at))
+
     def set_executing(self, name, args):
         command = _short_command((args or {}).get("command", ""))
+        self.last_command_at = time.monotonic()
         self._push_sync(exec_html(command) if self.use_rich else status_html(command=command))
 
     def set_done(self, name=None, args=None):
-        # Возврат к «думает» в том же черновике тоже анимирован.
-        if self.use_rich:
-            self._push_sync(THINK_HTML)
+        # Статус команды не сбрасываем: быстрая команда иначе видна доли секунды.
+        return None
 
     def set_retry(self, model):
         self._push_sync(retry_html(model) if self.use_rich else status_html(retry_model=model))
+
+    async def hold_command(self):
+        """Не отправлять итог раньше, чем команда побыла на экране."""
+        left = self._command_left()
+        if left > 0:
+            await asyncio.sleep(left)
 
     async def _push_draft(self, markup):
         # Один draft_id = Telegram анимирует переход между статусами.
@@ -275,6 +290,7 @@ async def ask_rich(message, prompt, view=None):
     """Один запрос: статус в чате, в ответ уходит только итог."""
     view = view or StreamView(message)
     answer = await stream_agent(prompt)
+    await view.hold_command()
     await view.close()
     await send_rich(view.chat_id, answer)
 

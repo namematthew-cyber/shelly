@@ -102,9 +102,46 @@ def test_callbacks_push_status_synchronously(monkeypatch):
     ]
 
 
+def test_command_status_lingers_before_final_answer(monkeypatch):
+    import threading
+    import time
+
+    fake = FakeBot()
+    monkeypatch.setattr(tg, "bot", fake)
+    monkeypatch.setattr(tg, "MIN_COMMAND_SEC", 0.2)
+
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr(tg, "main_loop", loop)
+
+    def run(coro):
+        return asyncio.run_coroutine_threadsafe(coro, loop).result(timeout=5)
+
+    try:
+        view = tg.StreamView(FakeMessage())
+        run(view.start())
+        view.set_executing("run_command", {"command": "uptime"})
+        view.set_done()
+
+        # Сразу после команды черновик показывает именно команду.
+        assert "Выполняю: uptime" in fake.drafts[-1]["rich_message"].html
+
+        started = time.monotonic()
+        run(view.hold_command())
+        assert time.monotonic() - started >= 0.15
+        assert "Выполняю: uptime" in fake.drafts[-1]["rich_message"].html
+        run(view.close())
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
 def test_ask_rich_sends_only_final_answer(monkeypatch):
     fake = FakeBot()
     monkeypatch.setattr(tg, "bot", fake)
+    monkeypatch.setattr(tg, "MIN_COMMAND_SEC", 0)
 
     async def fake_stream(prompt):
         return "финальный ответ"
