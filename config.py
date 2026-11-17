@@ -35,9 +35,10 @@ LOG_PATH = setting("SHELLY_LOG_PATH") or str(BASE_DIR / "tools.log")
 WORKDIR = setting("SHELLY_WORKDIR") or str(Path.home())
 
 API_KEYS = setting_list("GEMINI_API_KEYS") or setting_list("SHELLY_GEMINI_KEYS")
+# 3.1-flash-lite отвечает примерно в 5 раз быстрее 3.5, поэтому идёт первым.
 MODELS = setting_list("SHELLY_MODELS", (
-    "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
     "gemini-3.8-flash",
     "gemini-3.7-flash",
 ))
