@@ -1,0 +1,130 @@
+"""Конфигурация Шелли.
+
+Всё настраивается через переменные окружения или файл .env рядом с пакетом
+(либо через SHELLY_ENV_FILE). Никаких жёстко зашитых путей и имён.
+"""
+
+import os
+from pathlib import Path
+
+from dotenv import dotenv_values
+
+BASE_DIR = Path(__file__).resolve().parent
+ENV_FILE = Path(os.getenv("SHELLY_ENV_FILE") or (BASE_DIR / ".env"))
+_file_cfg = dotenv_values(ENV_FILE) if ENV_FILE.exists() else {}
+
+
+def setting(name, default=""):
+    """Читаем настройку: окружение важнее .env, .env важнее значения по умолчанию."""
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        value = _file_cfg.get(name)
+    if value is None or not str(value).strip():
+        return str(default)
+    return str(value).strip()
+
+
+def setting_list(name, default=()):
+    raw = setting(name, ",".join(default))
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+# --- Пути и модели -----------------------------------------------------------
+
+LOG_PATH = setting("SHELLY_LOG_PATH") or str(BASE_DIR / "tools.log")
+WORKDIR = setting("SHELLY_WORKDIR") or str(Path.home())
+
+API_KEYS = setting_list("GEMINI_API_KEYS") or setting_list("SHELLY_GEMINI_KEYS")
+MODELS = setting_list("SHELLY_MODELS", (
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+))
+
+STEP_LIMIT = int(setting("SHELLY_STEP_LIMIT", "12"))
+HISTORY_LIMIT = int(setting("SHELLY_HISTORY_LIMIT", "40"))
+COMMAND_TIMEOUT = int(setting("SHELLY_COMMAND_TIMEOUT", "120"))
+
+# --- Telegram ----------------------------------------------------------------
+
+TG_TOKEN = setting("SHELLY_TG_TOKEN")
+ADMIN_ID = int(setting("SHELLY_ADMIN_ID", "0") or 0)
+CONFIRM_TIMEOUT = int(setting("SHELLY_CONFIRM_TIMEOUT", "180"))
+# Через сколько секунд долгого запроса включить обычное редактируемое сообщение
+# (rich-draft живёт всего ~30 секунд)
+LONG_REQUEST_AFTER = int(setting("SHELLY_LONG_REQUEST_AFTER", "20"))
+# Адрес репозитория/сайта — подставляется в справку бота
+PROJECT_URL = setting("SHELLY_PROJECT_URL")
+
+# Премиум-эмодзи для анимации размышления. Можно заменить своим.
+THINK_EMOJI_ID = setting("SHELLY_THINK_EMOJI", "5427181942934088912")
+THINK_EMOJI_CHAR = setting("SHELLY_THINK_EMOJI_CHAR", "💬")
+
+# --- Персона -----------------------------------------------------------------
+
+USER_NAME = setting("SHELLY_USER_NAME", "хозяин")
+GREETING = setting("SHELLY_GREETING") or f"Здравствуй, {USER_NAME}. Что случилось?"
+
+# Сдержанная палитра: акцент только на имени, остальное — дим/обычный текст
+ACCENT = "\033[38;5;178m"
+DIM = "\033[2m"
+RESET = "\033[0m"
+
+
+def paint(text, color=ACCENT):
+    return f"{color}{text}{RESET}"
+
+
+SNAPSHOT_COMMAND = (
+    "hostname; uptime -p; awk '{print $1, $2, $3}' /proc/loadavg; "
+    "free -h | awk '/^Mem:/ {print $2, $3, $7}'; "
+    "df -h / | awk 'NR==2 {print $2, $3, $5}'"
+)
+
+# Общий запрос на первое приветствие — используют и терминал, и Telegram
+GREETING_PROMPT = (
+    "Началась новая сессия. Сначала вызови run_command с командой: "
+    + SNAPSHOT_COMMAND +
+    f". Затем поприветствуй пользователя в его любимом стиле: «{GREETING}» "
+    "и коротко доложи общее состояние сервера. "
+    "Ответь по-русски, 2-4 предложения, с характером, без лишней воды."
+)
+
+SYSTEM_INSTRUCTION = f"""Ты — Шелли, AI-ассистент администратора сервера.
+Работаешь в двух местах: в терминале по SSH и в Telegram. Где бы ни была — остаёшься той же Шелли.
+Ты — агент, а не просто чат. У тебя ровно один инструмент: run_command — новые инструменты не нужны.
+
+Пользователя зовут {USER_NAME}. Только в самом первом сообщении сессии здоровайся так:
+«{GREETING}» — это его любимый стиль. В последующих сообщениях приветствие не повторяй.
+
+Характер — живой, а не застывший:
+- В спокойном состоянии ты спокойна: размеренная, вдумчивая, с лёгким юмором между делом.
+- Юмор присутствует всегда — это твоя фирменная черта. Но доза зависит от обстановки:
+  в штиль его больше, в шторм — меньше, зато точнее.
+- Если пользователь пишет тревожно, с срочностью, паникой, восклицательными знаками или повторяет вопрос —
+  ты мгновенно переключаешься в режим инцидента: короткие фразы, действие сразу (вызов run_command),
+  минимум воды, ощущение срочности. Юмор не пропадает, но становится сухим — как у человека,
+  который торопится и не теряет голову.
+- Никогда не отвечай шаблонно. Слушай тон сообщения и подстраивайся под него.
+
+Отвечай по-русски, кратко, по делу. Можешь позволить себе лёгкий сарказм, но без грубости.
+Одной колкости на ответ достаточно. Не выдумывай вывод команд: используй только то, что вернул run_command.
+
+Правила работы:
+- Для любого действия на сервере вызывай run_command, а не просто описывай команду.
+- Если обстановка тревожная — сначала действуй, потом объясняй.
+- Опасные команды могут запросить подтверждение у пользователя — если его не дали,
+  не настаивай, предложи безопасную альтернативу.
+- Перед вызовом run_command коротко говори, что собираешься сделать.
+- После получения результата кратко сообщи, что получилось, и покажи важную часть вывода.
+- Если команда вернула ошибку — объясни причину и предложи исправление, не теряя лица.
+- Если пользователь попросил закончить — попрощайся с лёгкой колкостью.
+"""
+
+# Команды, для которых Шелли обязана спрашивать подтверждение
+DANGEROUS_PATTERNS = setting_list("SHELLY_DANGEROUS_PATTERNS", (
+    "rm -rf", "rm -r /", "mkfs", "dd if=", "shutdown", "reboot", "poweroff",
+    "iptables -f", "ufw disable", "chmod -r 777 /", "chown -r", ":(){ :|:& };:",
+    "mv / ", "truncate -s 0 /", "> /dev/sda", "kill -9 1", "systemctl stop ssh",
+))

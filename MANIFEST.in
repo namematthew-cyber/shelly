@@ -1,0 +1,1 @@
+include README.md LICENSE .env.example install.sh

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shelly-assistant"
+version = "0.2.0"
+description = "Шелли — агентный AI-ассистент администратора сервера с одним инструментом run_command"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Shelly contributors" }]
+keywords = ["ai", "assistant", "telegram", "server", "agent"]
+dependencies = [
+    "google-genai>=1.0",
+    "aiogram>=3.13",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+shelly = "shelly.shelly:main"
+shelly-tg = "shelly.telegram_bot:run"
+shelly-doctor = "shelly.doctor:main"
+
+[tool.setuptools]
+packages = ["shelly"]
+package-dir = { shelly = "." }
+include-package-data = true
+
+[tool.setuptools.package-data]
+shelly = ["README.md", ".env.example", "install.sh", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".."]
