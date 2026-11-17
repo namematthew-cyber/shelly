@@ -73,6 +73,13 @@ def exec_plain(command):
     return f"{THINK_EMOJI_CHAR} Выполняю: {_short_command(command)}"
 
 
+def status_html(command=None):
+    """Обычное сообщение со статусом: его можно редактировать и оно остаётся в чате."""
+    if command:
+        return f"{_CUSTOM_EMOJI} Выполняю: {html.escape(_short_command(command))}"
+    return f"{_CUSTOM_EMOJI} Шелли думает"
+
+
 def allowed(user_id):
     return bool(ADMIN_ID and user_id == ADMIN_ID)
 
@@ -221,8 +228,11 @@ async def send_page(chat_id, page):
         )
 
 
+_AUTO = object()
+
+
 class StreamView:
-    """Один запрос: переключает blackbox-индикатор между «думает» и «выполняет»."""
+    """Один запрос: переключает индикатор между «думает» и «выполняет»."""
 
     def __init__(self, message, draft_id):
         self.message = message
@@ -233,13 +243,17 @@ class StreamView:
         self.fallback = None
         self.fallback_text = None
         self.draft_text = None
+        self.status_message = None
+        self.status_lock = asyncio.Lock()
 
     def set_executing(self, name, args):
-        command = (args or {}).get("command", "")
+        command = _short_command((args or {}).get("command", ""))
         with self.lock:
-            self.executing = _short_command(command)
+            self.executing = command
             fallback = self.fallback
-        self._schedule(self._push_status(fallback))
+        # Команду фиксируем сразу: быстрый инструмент может завершиться раньше,
+        # чем event loop доберётся до запланированного обновления.
+        self._schedule(self._push_status(fallback, command))
 
     def set_done(self, name=None, args=None):
         with self.lock:
@@ -247,16 +261,17 @@ class StreamView:
             self.draft_text = None
             self.fallback_text = None
             fallback = self.fallback
-        self._schedule(self._push_status(fallback))
+        self._schedule(self._push_status(fallback, None))
 
     @staticmethod
     def _schedule(coro):
         if main_loop is not None:
             asyncio.run_coroutine_threadsafe(coro, main_loop)
 
-    async def _push_status(self, fallback=None):
-        with self.lock:
-            command = self.executing
+    async def _push_status(self, fallback=None, command=_AUTO):
+        if command is _AUTO:
+            with self.lock:
+                command = self.executing
         markup = exec_html(command) if command else THINK_HTML
         plain = exec_plain(command) if command else THINK_PLAIN
         try:
@@ -267,6 +282,27 @@ class StreamView:
             )
         except Exception as e:
             logger.debug("Не удалось обновить статус черновика: %s", e)
+
+        # Обычное сообщение остаётся в чате до финального ответа: так команды
+        # реально видны, даже если executed меньше секунды.
+        async with self.status_lock:
+            try:
+                if self.status_message is None:
+                    self.status_message = await bot.send_message(
+                        chat_id=self.chat_id,
+                        text=status_html(command),
+                        parse_mode=ParseMode.HTML,
+                        disable_notification=True,
+                    )
+                else:
+                    await bot.edit_message_text(
+                        text=status_html(command),
+                        chat_id=str(self.chat_id),
+                        message_id=self.status_message.message_id,
+                        parse_mode=ParseMode.HTML,
+                    )
+            except Exception as e:
+                logger.debug("Статус выполнения не показан: %s", e)
 
         if fallback is not None:
             try:
@@ -327,6 +363,12 @@ async def ask_rich(message, prompt, draft_id, view=None):
             await bot.delete_message(chat_id=str(chat_id), message_id=view.fallback.message_id)
         except Exception as e:
             logger.debug("Не удалось удалить keepalive-сообщение: %s", e)
+
+    if view.status_message is not None:
+        try:
+            await bot.delete_message(chat_id=str(chat_id), message_id=view.status_message.message_id)
+        except Exception as e:
+            logger.debug("Не удалось удалить статус выполнения: %s", e)
 
     await send_rich(chat_id, answer)
 

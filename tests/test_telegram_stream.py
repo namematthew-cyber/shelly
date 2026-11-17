@@ -48,16 +48,18 @@ def test_stream_view_switches_between_thinking_and_executing(monkeypatch):
 
     asyncio.run(view._push_status(view.fallback))
     assert fake.drafts[-1]["rich_message"].html == tg.THINK_HTML
-    assert fake.edits[-1]["text"] == tg.THINK_PLAIN
+    assert fake.messages[-1]["text"] == tg.status_html()
 
     view.executing = "echo ok"
-    asyncio.run(view._push_status(view.fallback))
+    asyncio.run(view._push_status(view.fallback, "echo ok"))
     assert "Выполняю: echo ok" in fake.drafts[-1]["rich_message"].html
-    assert fake.edits[-1]["text"] == tg.exec_plain("echo ok")
+    assert any(e["text"] == tg.status_html("echo ok") for e in fake.edits)
+    assert "tg-emoji" in fake.edits[-2]["text"]
 
     view.executing = None
-    asyncio.run(view._push_status(view.fallback))
+    asyncio.run(view._push_status(view.fallback, None))
     assert fake.drafts[-1]["rich_message"].html == tg.THINK_HTML
+    assert any(e["text"] == tg.status_html() for e in fake.edits)
 
 
 def test_long_request_uses_editable_keepalive(monkeypatch):
