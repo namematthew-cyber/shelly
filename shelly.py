@@ -103,12 +103,13 @@ def main():
     print()
     print(paint("  1.", ACCENT) + " Да")
     print(paint("  2.", DIM) + " Нет")
-    print(paint("  exit / выход — выйти", DIM))
     print()
     try:
         choice = input(paint("Выбор [1]: ", DIM)).strip()
     except (EOFError, KeyboardInterrupt):
-        choice = "2"
+        print()
+        say("До связи. Без меня тут скучно будет.")
+        return
     if choice not in {"", "1"}:
         return
 
