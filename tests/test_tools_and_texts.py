@@ -125,3 +125,25 @@ def test_static_pages_go_one_step_at_a_time():
     assert "Шаг 1" not in texts.WELCOME_HTML
     assert "Шелли" not in texts.WELCOME_HTML
 
+
+def test_bot_created_message_is_detailed_and_fits_photo_caption():
+    from shelly import texts
+
+    message = texts.bot_created_html(
+        "shelly_ai_1794926638240138_bot",
+        "9270997319:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    )
+
+    assert "@shelly_ai_1794926638240138_bot создан" in message
+    assert "Не публикуйте" in message
+    assert "1. Ключ Gemini" in message
+    assert "2. Установка на VPS" in message
+    assert "3. Проверка" in message
+    assert "4. Перейдите в своего бота" in message
+    assert "shelly-doctor" in message
+    assert "Подтверждения" not in message
+    assert "подтверждения" in message
+    assert "<b>" not in message
+    # Telegram ограничивает caption к фото 1024 символами.
+    assert len(message) <= 1024
+

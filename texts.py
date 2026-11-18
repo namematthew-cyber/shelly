@@ -123,26 +123,39 @@ CLEAR_BUTTONS = ((_nav("menu", "Начать"),),)
 
 
 def bot_created_html(username: str, token: str) -> str:
-    """Сообщение после создания бота через ссылку головного бота."""
+    """Сообщение после создания бота через ссылку головного бота.
+
+    Держим его коротким: это caption к инфографике, лимит Telegram — 1024 символа.
+    """
     name = html.escape("@" + str(username))
     safe_token = html.escape(str(token))
     return f"""Бот {name} создан.
 
-Токен: <code>{safe_token}</code>. Он понадобится при установке — не публикуйте его.
+Токен:
+<code>{safe_token}</code>
+
+Нужен один раз — при установке. Не публикуйте его. Покажете кому-то — создайте нового.
 
 Дальше по шагам.
 
-1. Получите ключ Gemini: <a href="{_KEYS_URL}">AI Studio</a> → Create API key.
+1. Ключ Gemini.
+Откройте <a href="{_KEYS_URL}">AI Studio</a> → Create API key. Уже есть ключ — можно его.
 
-2. Зайдите на свой VPS по SSH и выполните:
-<pre><code>git clone {_REPO_TEXT} shelly && cd shelly
+2. Установка на VPS.
+Зайдите по SSH и выполните:
+<pre><code>git clone {_REPO_TEXT} shelly
+cd shelly
 sudo ./install.sh --service</code></pre>
-Установщик спросит токен бота и ключ Gemini — вставьте их.
 
-3. Проверьте установку:
+Установщик спросит токен бота, ключ Gemini и Telegram ID (узнать можно у @userinfobot). Создаст .env (600), поднимет сервис и проверит установку.
+
+3. Проверка.
 <pre><code>.venv/bin/shelly-doctor</code></pre>
+Нужны [OK] везде. Увидели [X] — поправьте .env и повторите.
 
-4. Переходите в своего бота и пишите задачу, например «проверь сервер»."""
+4. Перейдите в своего бота и напишите «проверь сервер». Shelly выполнит команду на VPS и вернёт результат. Опасные команды спросят подтверждения.
+
+Не получилось — напишите /help."""
 
 
 def _plain(markup: str) -> str:
