@@ -1,4 +1,4 @@
-from shelly import tools
+from shelly import config, texts, tools
 from shelly.config import setting
 from shelly.texts import GEMINI_KEY, HELP, INSTALL
 
@@ -156,4 +156,38 @@ def test_bot_created_messages_are_friendly_and_fitted():
     assert "напишите мне или отправьте" not in details
     assert "<b>" not in caption
     assert len(details) <= 4000
+    assert "/terminal" in details
+
+
+def test_terminal_setting_toggle_preserves_env(tmp_path, monkeypatch):
+    monkeypatch.delenv("SHELLY_TERMINAL_AUTOSTART", raising=False)
+    env = tmp_path / ".env"
+    env.write_text("GEMINI_API_KEYS=secret\nSHELLY_TERMINAL_AUTOSTART=1\n", encoding="utf-8")
+    monkeypatch.setattr(config, "ENV_FILE", env)
+
+    assert config.terminal_autostart_enabled() is True
+    config.set_setting("SHELLY_TERMINAL_AUTOSTART", "0")
+    assert config.terminal_autostart_enabled() is False
+    assert env.read_text(encoding="utf-8").splitlines() == [
+        "GEMINI_API_KEYS=secret",
+        "SHELLY_TERMINAL_AUTOSTART=0",
+    ]
+    assert env.stat().st_mode & 0o777 == 0o600
+
+    config.set_setting("SHELLY_TERMINAL_AUTOSTART", "1")
+    assert config.terminal_autostart_enabled() is True
+
+
+def test_terminal_settings_text():
+    on = texts.terminal_settings_html(True)
+    off = texts.terminal_settings_html(False)
+
+    assert "<b>Автозапуск в терминале</b>" in on
+    assert "Сейчас: включён" in on
+    assert "Хотите запустить Шелли" in on
+
+    assert "Сейчас: выключен" in off
+    assert "<code>shelly</code>" in off
+    plain = texts.terminal_settings_plain(False)
+    assert "<" not in plain and "shelly" in plain
 

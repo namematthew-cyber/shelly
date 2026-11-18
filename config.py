@@ -29,6 +29,46 @@ def setting_list(name, default=()):
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def live_setting(name, default=""):
+    """Читаем значение прямо из .env без кэша — нужно для переключателей.
+
+    Переменная окружения по-прежнему важнее файла.
+    """
+    value = os.getenv(name)
+    if value is None or not str(value).strip():
+        cfg = dotenv_values(ENV_FILE) if ENV_FILE.exists() else {}
+        value = cfg.get(name)
+    if value is None or not str(value).strip():
+        return str(default)
+    return str(value).strip()
+
+
+def set_setting(name, value):
+    """Атомарно меняем одну строку в .env, сохраняя права 600."""
+    value = str(value)
+    lines = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
+    updated = []
+    replaced = False
+    for line in lines:
+        if line.strip().startswith(f"{name}="):
+            updated.append(f"{name}={value}")
+            replaced = True
+        else:
+            updated.append(line)
+    if not replaced:
+        updated.append(f"{name}={value}")
+
+    tmp = ENV_FILE.with_name(ENV_FILE.name + ".tmp")
+    tmp.write_text("\n".join(updated) + "\n", encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, ENV_FILE)
+
+
+def terminal_autostart_enabled():
+    """Автозапуск Шелли при интерактивном входе по SSH (по умолчанию включён)."""
+    return live_setting("SHELLY_TERMINAL_AUTOSTART", "1") == "1"
+
+
 # --- Пути и модели -----------------------------------------------------------
 
 LOG_PATH = setting("SHELLY_LOG_PATH") or str(BASE_DIR / "tools.log")

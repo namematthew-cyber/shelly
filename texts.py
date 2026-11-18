@@ -94,6 +94,7 @@ HELP_HTML = """Этот бот отвечает на вопросы и помо�
 <code>/examples</code> — примеры задач
 <code>/security</code> — безопасность
 <code>/clear</code> — очистить контекст
+<code>/terminal</code> — автозапуск в терминале (в своём боте)
 <code>/help</code> — справка"""
 HELP_BUTTONS = ((_nav("menu", "Начать"),),)
 
@@ -178,12 +179,33 @@ sudo ./install.sh --service</code></pre>
 
 <pre><code>проверь сервер</code></pre>
 
-Shelly выполнит команду прямо на вашем VPS и вернёт результат. Опасные команды сначала попросят подтверждения кнопками «Да» и «Нет» — так вы всегда будете в курсе, что происходит."""
+Shelly выполнит команду прямо на вашем VPS и вернёт результат. Опасные команды сначала попросят подтверждения кнопками «Да» и «Нет» — так вы всегда будете в курсе, что происходит.
+
+При входе по SSH Шелли сама спросит «Хотите запустить Шелли?». Если это мешает — отключите автозапуск командой <code>/terminal</code>."""
 
 
 def bot_created_html(username: str, token: str) -> str:
     """Обратная совместимость: раньше это был caption к фото."""
     return bot_created_caption(username, token)
+
+
+def terminal_settings_html(enabled: bool) -> str:
+    """Состояние автозапуска Шелли в терминале."""
+    state = "включён" if enabled else "выключен"
+    detail = (
+        "При входе по SSH Шелли сама спрашивает «Хотите запустить Шелли?»."
+        if enabled else
+        "При входе по SSH терминал остаётся обычным — запустите <code>shelly</code> вручную."
+    )
+    return f"""<b>Автозапуск в терминале</b>
+
+Сейчас: {state}. {detail}
+
+Кнопка ниже переключает настройку."""
+
+
+def terminal_settings_plain(enabled: bool) -> str:
+    return _plain(terminal_settings_html(enabled))
 
 
 def _plain(markup: str) -> str:

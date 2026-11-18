@@ -43,6 +43,7 @@ from .agent import Agent, human_error
 from .config import (
     ADMIN_ID, CONFIRM_TIMEOUT, TG_TOKEN,
     THINK_EMOJI_CHAR, THINK_EMOJI_ID,
+    set_setting, terminal_autostart_enabled,
 )
 from .masking import mask
 from . import texts
@@ -263,6 +264,35 @@ def _inline_keyboard(rows, user_id=None):
                 raise ValueError(f"Неизвестный тип кнопки: {kind}")
         buttons.append(line)
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def terminal_settings_keyboard(enabled):
+    """Одна кнопка: переключить автозапуск Шелли в терминале."""
+    label = "Выключить автозапуск" if enabled else "Включить автозапуск"
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text=label, callback_data="cfg:terminal",
+    )]])
+
+
+async def send_terminal_settings(chat_id):
+    enabled = terminal_autostart_enabled()
+    text = texts.terminal_settings_html(enabled)
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=terminal_settings_keyboard(enabled),
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.exception("HTML-настройка недоступна, шлю простой текст: %s", e)
+        await bot.send_message(
+            chat_id=chat_id,
+            text=texts.terminal_settings_plain(enabled),
+            reply_markup=terminal_settings_keyboard(enabled),
+            disable_web_page_preview=True,
+        )
 
 
 WELCOME_IMAGE = Path(__file__).with_name("assets") / "welcome.png"
@@ -679,6 +709,45 @@ async def cmd_help(message: Message):
     await send_page(message.chat.id, "help", message.from_user.id)
 
 
+@dp.message(Command("terminal"))
+async def cmd_terminal(message: Message):
+    if not is_owner(message.from_user.id):
+        await bot.send_message(
+            chat_id=message.chat.id,
+            text="Настройку автозапуска может менять только владелец этого бота.",
+        )
+        return
+    await send_terminal_settings(message.chat.id)
+
+
+@dp.callback_query(F.data == "cfg:terminal")
+async def on_terminal_toggle(callback: CallbackQuery):
+    if not is_owner(callback.from_user.id):
+        await callback.answer("Только владелец бота", show_alert=True)
+        return
+    enabled = not terminal_autostart_enabled()
+    try:
+        set_setting("SHELLY_TERMINAL_AUTOSTART", "1" if enabled else "0")
+    except Exception as e:
+        logger.exception("Не удалось сохранить настройку терминала: %s", e)
+        await callback.answer("Не получилось сохранить настройку", show_alert=True)
+        return
+    await callback.answer("Автозапуск включён" if enabled else "Автозапуск выключен")
+    text = texts.terminal_settings_html(enabled)
+    try:
+        await bot.edit_message_text(
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=terminal_settings_keyboard(enabled),
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.debug("Не удалось отредактировать настройку, шлём новую: %s", e)
+        await send_terminal_settings(callback.message.chat.id)
+
+
 @dp.message(F.text)
 async def on_text(message: Message):
     if message.text.startswith("/"):
@@ -710,6 +779,7 @@ async def main():
         BotCommand(command="examples", description="Готовые задачи"),
         BotCommand(command="security", description="Как защищены секреты"),
         BotCommand(command="clear", description="Очистить контекст"),
+        BotCommand(command="terminal", description="Автозапуск в терминале"),
         BotCommand(command="help", description="Справка"),
     ])
 

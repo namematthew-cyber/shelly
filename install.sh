@@ -59,6 +59,39 @@ valid_utf8() {
     printf '%s' "$1" | "$PYTHON" -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' 2>/dev/null
 }
 
+install_terminal_hook() {
+    local target_user="${SUDO_USER:-$(id -un)}"
+    local target_home
+    target_home="$(getent passwd "$target_user" | cut -d: -f6)"
+    [ -n "$target_home" ] || target_home="$HOME"
+    local bashrc="$target_home/.bashrc"
+    [ -f "$bashrc" ] || touch "$bashrc"
+
+    local tmp
+    tmp="$(mktemp)"
+    awk '
+        /# >>> shelly terminal >>>/ { skip=1; next }
+        /# <<< shelly terminal <<</ { skip=0; next }
+        !skip { print }
+    ' "$bashrc" > "$tmp"
+    cat >> "$tmp" <<EOF
+# >>> shelly terminal >>>
+if [[ \$- == *i* && -t 0 && -z \${SHELLY_ACTIVE:-} ]] && grep -qx 'SHELLY_TERMINAL_AUTOSTART=1' '$ENV_FILE' 2>/dev/null; then
+    export SHELLY_ACTIVE=1
+    '$VENV/bin/shelly'
+    unset SHELLY_ACTIVE
+fi
+# <<< shelly terminal <<<
+EOF
+    if [ "$(id -u)" -eq 0 ] && [ "$target_user" != "root" ] && id "$target_user" >/dev/null 2>&1; then
+        chown "$target_user" "$tmp"
+    fi
+    chmod 644 "$tmp"
+    mv "$tmp" "$bashrc"
+    ok "Автозапуск в терминале добавлен в $bashrc"
+    hint "Отключить можно командой /terminal в своём боте"
+}
+
 printf '\n'
 printf '  %sS H E L L Y%s  %s· установка%s\n' "$AMBER" "$RESET" "$DIM" "$RESET"
 printf '  %s────────────────────────────────%s\n' "$DIM" "$RESET"
@@ -112,8 +145,21 @@ SHELLY_USER_NAME=$name
 SHELLY_WORKDIR=$PARENT
 SHELLY_PROJECT_URL=$project_url
 SHELLY_MASK_SECRETS=1
+SHELLY_TERMINAL_AUTOSTART=1
 EOF
     ok "Записал $ENV_FILE (права 600)"
+fi
+
+if ! grep -q '^SHELLY_TERMINAL_AUTOSTART=' "$ENV_FILE" 2>/dev/null; then
+    printf 'SHELLY_TERMINAL_AUTOSTART=1\n' >> "$ENV_FILE"
+fi
+
+section "Терминал"
+if [ -t 0 ] && [ -t 1 ] && [ -z "${SHELLY_NO_TERMINAL_HOOK:-}" ]; then
+    install_terminal_hook
+else
+    ok "Автозапуск в терминале пропущен (неинтерактивный запуск)"
+    hint "Включить вручную: $VENV/bin/shelly"
 fi
 
 if [[ "${1:-}" == "--service" ]]; then

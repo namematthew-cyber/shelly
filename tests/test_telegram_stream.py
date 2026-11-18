@@ -301,6 +301,54 @@ def test_public_users_get_isolated_agents_without_commands(monkeypatch):
     assert tg.is_owner(99) is False
 
 
+def test_terminal_command_and_toggle_are_owner_only(monkeypatch):
+    fake = FakeBot()
+    monkeypatch.setattr(tg, "bot", fake)
+    monkeypatch.setattr(tg, "ADMIN_ID", 42)
+    state = {"enabled": True}
+    monkeypatch.setattr(tg, "terminal_autostart_enabled", lambda: state["enabled"])
+
+    def fake_set(name, value):
+        assert name == "SHELLY_TERMINAL_AUTOSTART"
+        state["enabled"] = value == "1"
+
+    monkeypatch.setattr(tg, "set_setting", fake_set)
+
+    owner = SimpleNamespace(
+        chat=SimpleNamespace(id=5), from_user=SimpleNamespace(id=42),
+    )
+    asyncio.run(tg.cmd_terminal(owner))
+    assert len(fake.messages) == 1
+    assert "Сейчас: включён" in fake.messages[0]["text"]
+    button = fake.messages[0]["reply_markup"].inline_keyboard[0][0]
+    assert button.callback_data == "cfg:terminal"
+    assert button.text == "Выключить автозапуск"
+
+    answered = []
+
+    async def answer(text, **kwargs):
+        answered.append(text)
+
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(chat=SimpleNamespace(id=5), message_id=77),
+        answer=answer,
+    )
+    asyncio.run(tg.on_terminal_toggle(callback))
+
+    assert state["enabled"] is False
+    assert answered == ["Автозапуск выключен"]
+    assert len(fake.edits) == 1
+    assert "Сейчас: выключен" in fake.edits[0]["text"]
+    assert fake.edits[0]["reply_markup"].inline_keyboard[0][0].text == "Включить автозапуск"
+
+    stranger = SimpleNamespace(
+        chat=SimpleNamespace(id=6), from_user=SimpleNamespace(id=43),
+    )
+    asyncio.run(tg.cmd_terminal(stranger))
+    assert "только владелец" in fake.messages[-1]["text"]
+
+
 def test_status_indicators_order_and_execution():
     assert tg.THINK_HTML.startswith("<tg-thinking><tg-emoji")
     assert " Шелли думает</tg-thinking>" in tg.THINK_HTML
