@@ -143,14 +143,16 @@ def test_bot_created_messages_are_friendly_and_fitted():
 
     assert "всё почти готово" in details
     assert "разберёмся вместе" in details
-    assert "1. Ключ Gemini" in details
-    assert "2. Установка на VPS" in details
-    assert "3. Проверка" in details
-    assert "4. Первая задача" in details
+    assert "<b>1. Ключ Gemini</b>" in details
+    assert "<b>2. Установка на VPS</b>" in details
+    assert "<b>3. Проверка</b>" in details
+    assert "<b>4. Первая задача</b>" in details
+    assert details.count("<b>") == 4
     assert "shelly-doctor" in details
     assert "проверь сервер" in details
     assert "подтверждения" in details
-    assert "Помогу" in details
-    assert "<b>" not in caption and "<b>" not in details
+    assert "Если он случайно попадёт" not in details
+    assert "напишите мне или отправьте" not in details
+    assert "<b>" not in caption
     assert len(details) <= 4000
 
