@@ -99,7 +99,7 @@ def build_agent():
 
 def main():
     print()
-    print("Хотите запустить эвристическую матрицу?")
+    print("Хотите запустить Шелли?")
     print()
     print(paint("  1.", ACCENT) + " Да")
     print(paint("  2.", DIM) + " Нет")
