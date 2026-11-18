@@ -147,6 +147,7 @@ def test_bot_created_messages_are_friendly_and_fitted():
     assert "<b>2. Установка на VPS</b>" in details
     assert "<b>3. Проверка</b>" in details
     assert "<b>4. Первая задача</b>" in details
+    assert "Пока вы не выполнили установку, ваш бот будет молчать" in details
     assert details.count("<b>") == 4
     assert "shelly-doctor" in details
     assert "проверь сервер" in details
