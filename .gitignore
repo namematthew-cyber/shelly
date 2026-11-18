@@ -10,3 +10,6 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+admin_stats.json
+admin_events.jsonl
+admin_events.offset

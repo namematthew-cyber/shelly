@@ -23,6 +23,7 @@ dev = ["pytest>=8.0"]
 [project.scripts]
 shelly = "shelly.shelly:main"
 shelly-tg = "shelly.telegram_bot:run"
+shelly-admin = "shelly.admin_panel:run"
 shelly-doctor = "shelly.doctor:main"
 
 [tool.setuptools]

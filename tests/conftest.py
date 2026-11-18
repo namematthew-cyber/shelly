@@ -4,3 +4,4 @@ import os
 os.environ.setdefault("GEMINI_API_KEYS", "AIzaSyTEST000000000000000000000000000")
 os.environ.setdefault("SHELLY_TG_TOKEN", "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi")
 os.environ.setdefault("SHELLY_ADMIN_ID", "1")
+os.environ.setdefault("SHELLY_TELEMETRY_DISABLED", "1")

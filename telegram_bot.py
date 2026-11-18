@@ -47,6 +47,7 @@ from .config import (
 )
 from .masking import mask
 from . import texts
+from .telemetry import record
 
 logger = logging.getLogger("shelly.tg")
 
@@ -211,6 +212,7 @@ async def stream_agent(prompt, active_agent):
         return await asyncio.to_thread(active_agent.send, prompt, True, None)
     except Exception as e:
         logger.exception("Ошибка агента: %s", e)
+        record("error", detail=type(e).__name__)
         return human_error(e)
 
 
@@ -392,6 +394,12 @@ class StreamView:
         return None
 
     def set_retry(self, model):
+        sender = getattr(self.message, "from_user", None)
+        record(
+            "retry",
+            user_id=getattr(sender, "id", None),
+            detail=getattr(model, "name", model),
+        )
         self._push_sync(retry_html(model) if self.use_rich else status_html(retry_model=model))
 
     async def hold_command(self):
@@ -523,6 +531,7 @@ def tg_confirm(text):
         _pending.pop(token, None)
 
     answer = box.get("answer") == "yes"
+    record("confirm", user_id=ADMIN_ID, detail="да" if answer else "нет")
     if answer:
         label = "✅ Подтверждено"
     elif done:
@@ -577,6 +586,7 @@ async def handle_managed_bot(info):
         return
 
     _managed[user.id] = {"username": new_bot.username, "token": token}
+    record("bot_created", user_id=user.id, detail=new_bot.username)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
         text="Перейти в бота", url=f"https://t.me/{new_bot.username}",
     )]])
@@ -658,6 +668,7 @@ async def on_nav(callback: CallbackQuery):
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     # Только приветствие: агент запускается по первой реальной задаче.
+    record("start", user_id=message.from_user.id, once=True)
     await send_page(message.chat.id, "menu", message.from_user.id)
 
 
@@ -752,6 +763,8 @@ async def on_terminal_toggle(callback: CallbackQuery):
 async def on_text(message: Message):
     if message.text.startswith("/"):
         return
+    record("task", user_id=message.from_user.id)
+    record("first_task", user_id=message.from_user.id, once=True)
     await ask(message, message.text)
 
 

@@ -29,24 +29,26 @@ def setting_list(name, default=()):
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-def live_setting(name, default=""):
+def live_setting(name, default="", env_file=None):
     """Читаем значение прямо из .env без кэша — нужно для переключателей.
 
     Переменная окружения по-прежнему важнее файла.
     """
+    path = Path(env_file) if env_file else ENV_FILE
     value = os.getenv(name)
     if value is None or not str(value).strip():
-        cfg = dotenv_values(ENV_FILE) if ENV_FILE.exists() else {}
+        cfg = dotenv_values(path) if path.exists() else {}
         value = cfg.get(name)
     if value is None or not str(value).strip():
         return str(default)
     return str(value).strip()
 
 
-def set_setting(name, value):
+def set_setting(name, value, env_file=None):
     """Атомарно меняем одну строку в .env, сохраняя права 600."""
+    path = Path(env_file) if env_file else ENV_FILE
     value = str(value)
-    lines = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     updated = []
     replaced = False
     for line in lines:
@@ -58,10 +60,10 @@ def set_setting(name, value):
     if not replaced:
         updated.append(f"{name}={value}")
 
-    tmp = ENV_FILE.with_name(ENV_FILE.name + ".tmp")
+    tmp = path.with_name(path.name + ".tmp")
     tmp.write_text("\n".join(updated) + "\n", encoding="utf-8")
     os.chmod(tmp, 0o600)
-    os.replace(tmp, ENV_FILE)
+    os.replace(tmp, path)
 
 
 def terminal_autostart_enabled():
@@ -97,6 +99,16 @@ CONFIRM_TIMEOUT = int(setting("SHELLY_CONFIRM_TIMEOUT", "180"))
 LONG_REQUEST_AFTER = int(setting("SHELLY_LONG_REQUEST_AFTER", "20"))
 # Адрес репозитория/сайта — подставляется в справку бота
 PROJECT_URL = setting("SHELLY_PROJECT_URL", "https://github.com/namematthew-cyber/shelly")
+
+# --- Панель администратора ---------------------------------------------------
+# Только служебные события: тексты сообщений и вывод команд не сохраняются.
+ADMIN_STATS_FILE = setting("SHELLY_ADMIN_STATS_FILE") or str(BASE_DIR / "admin_stats.json")
+ADMIN_EVENTS_FILE = setting("SHELLY_ADMIN_EVENTS_FILE") or str(BASE_DIR / "admin_events.jsonl")
+ADMIN_OFFSET_FILE = setting("SHELLY_ADMIN_OFFSET_FILE") or str(BASE_DIR / "admin_events.offset")
+ADMIN_NOTIFY_EVENTS = setting(
+    "SHELLY_ADMIN_NOTIFY_EVENTS",
+    "start,bot_created,first_task,error,service",
+)
 
 # Премиум-эмодзи для анимации размышления. Можно заменить своим.
 THINK_EMOJI_ID = setting("SHELLY_THINK_EMOJI", "5427181942934088912")
