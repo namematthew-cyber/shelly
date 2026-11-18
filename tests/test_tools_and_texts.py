@@ -126,24 +126,31 @@ def test_static_pages_go_one_step_at_a_time():
     assert "Шелли" not in texts.WELCOME_HTML
 
 
-def test_bot_created_message_is_detailed_and_fits_photo_caption():
+def test_bot_created_messages_are_friendly_and_fitted():
     from shelly import texts
 
-    message = texts.bot_created_html(
+    caption = texts.bot_created_caption(
         "shelly_ai_1794926638240138_bot",
         "9270997319:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     )
+    details = texts.bot_created_details()
 
-    assert "@shelly_ai_1794926638240138_bot создан" in message
-    assert "Не публикуйте" in message
-    assert "1. Ключ Gemini" in message
-    assert "2. Установка на VPS" in message
-    assert "3. Проверка" in message
-    assert "4. Перейдите в своего бота" in message
-    assert "shelly-doctor" in message
-    assert "Подтверждения" not in message
-    assert "подтверждения" in message
-    assert "<b>" not in message
+    assert "@shelly_ai_1794926638240138_bot создан" in caption
+    assert "не публикуйте" in caption.lower()
+    assert "следующим сообщением" in caption
     # Telegram ограничивает caption к фото 1024 символами.
-    assert len(message) <= 1024
+    assert len(caption) <= 1024
+
+    assert "всё почти готово" in details
+    assert "разберёмся вместе" in details
+    assert "1. Ключ Gemini" in details
+    assert "2. Установка на VPS" in details
+    assert "3. Проверка" in details
+    assert "4. Первая задача" in details
+    assert "shelly-doctor" in details
+    assert "проверь сервер" in details
+    assert "подтверждения" in details
+    assert "Помогу" in details
+    assert "<b>" not in caption and "<b>" not in details
+    assert len(details) <= 4000
 

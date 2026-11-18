@@ -236,10 +236,18 @@ def test_managed_bot_returns_token_and_next_step(monkeypatch, tmp_path):
     assert sent["parse_mode"] == ParseMode.HTML
     assert "@shelly_user_bot" in sent["caption"]
     assert "123456:AA_token" in sent["caption"]
-    assert "Дальше по шагам" in sent["caption"]
-    assert "shelly-doctor" in sent["caption"]
-    assert sent["reply_markup"].inline_keyboard[0][0].url == "https://t.me/shelly_user_bot"
-    assert fake.messages == []
+    assert "следующим сообщением" in sent["caption"]
+    assert "reply_markup" not in sent
+
+    assert len(fake.messages) == 1
+    details = fake.messages[0]
+    assert details["chat_id"] == 99
+    assert details["parse_mode"] == ParseMode.HTML
+    assert "всё почти готово" in details["text"]
+    assert "1. Ключ Gemini" in details["text"]
+    assert "shelly-doctor" in details["text"]
+    assert "проверь сервер" in details["text"]
+    assert details["reply_markup"].inline_keyboard[0][0].url == "https://t.me/shelly_user_bot"
 
 
 def test_managed_bot_update_is_dispatched(monkeypatch):

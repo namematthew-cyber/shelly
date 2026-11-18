@@ -550,7 +550,8 @@ async def handle_managed_bot(info):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
         text="Перейти в бота", url=f"https://t.me/{new_bot.username}",
     )]])
-    caption = texts.bot_created_html(new_bot.username, token)
+    caption = texts.bot_created_caption(new_bot.username, token)
+    details = texts.bot_created_details()
     if BOT_CREATED_IMAGE.is_file():
         try:
             await bot.send_photo(
@@ -558,14 +559,26 @@ async def handle_managed_bot(info):
                 photo=FSInputFile(BOT_CREATED_IMAGE),
                 caption=caption,
                 parse_mode=ParseMode.HTML,
+            )
+            await bot.send_message(
+                chat_id=user.id,
+                text=details,
+                parse_mode=ParseMode.HTML,
                 reply_markup=keyboard,
+                disable_web_page_preview=True,
             )
             return
         except Exception as e:
-            logger.exception("Не удалось отправить инфографику созданного бота: %s", e)
+            logger.exception("Не удалось отправить сообщение созданного бота: %s", e)
     await bot.send_message(
         chat_id=user.id,
         text=caption,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True,
+    )
+    await bot.send_message(
+        chat_id=user.id,
+        text=details,
         parse_mode=ParseMode.HTML,
         reply_markup=keyboard,
         disable_web_page_preview=True,
